@@ -1,0 +1,6 @@
+Django>=5.0,<5.1
+djangorestframework>=3.14
+psycopg2-binary>=2.9  # PostgreSQL adapter
+python-dotenv>=1.0    # For managing .env files
+django-cors-headers>=4.3 # To allow React to talk to Django
+djangorestframework-simplejwt>=5.3 # For JWT authentication
