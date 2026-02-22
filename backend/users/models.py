@@ -41,7 +41,7 @@ class Role(models.Model):
         CUSTOM = 'custom', 'Custom'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    type = models.CharField()
+    type = models.CharField(max_length=20, choices=RoleType.choices, default=RoleType.CUSTOM)
     name = models.CharField(max_length=100, unique=True)
     level = models.IntegerField(default=1) # For hierarchical roles
     description = models.TextField(blank=True, null=True)
@@ -62,6 +62,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_login = models.DateTimeField(blank=True, null=True) # Django uses 'last_login' by default, can be mapped
+    role = models.ManyToManyField(Role, related_name='users', blank=True) # Many-to-many relationship with roles
 
     is_staff = models.BooleanField(default=False) # Required for admin interface access
     objects = CustomUserManager()
@@ -98,4 +99,16 @@ class UserSession(models.Model):
     ip_address = models.GenericIPAddressField(null=True, blank=True) # Optional: Track IP address for security
 
     def __str__(self):
-        return f"Session for {self.user.username} (expires at {self.expires_at})"
+        return f"Session for {self.user.username} (started at {self.started_at})"
+    
+class ApiClient(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    api_key_hash = models.CharField(max_length=255, unique=True) # Store API key for authentication
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return self.name
