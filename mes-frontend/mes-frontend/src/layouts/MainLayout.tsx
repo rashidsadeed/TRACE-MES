@@ -31,7 +31,7 @@ const MainLayout: React.FC = () => {
     {
       key: "/production",
       icon: <ExperimentOutlined />,
-      label: "Production Line",
+      label: "Productions",
     },
     { key: "/work-orders", icon: <FileTextOutlined />, label: "Work Orders" },
     { key: "/inventory", icon: <InboxOutlined />, label: "Inventory" },
@@ -105,8 +105,14 @@ const MainLayout: React.FC = () => {
               className: "trigger",
               onClick: () => setCollapsed(!collapsed),
               style: { fontSize: "18px", cursor: "pointer" },
-            }
+            },
           )}
+
+          {/* Portal target — pages can inject navbar actions here */}
+          <div
+            id="navbar-actions"
+            style={{ flex: 1, display: "flex", justifyContent: "center" }}
+          />
 
           <Space size="large">
             <div style={{ textAlign: "right", lineHeight: "1.2" }}>

@@ -8,7 +8,7 @@ import {
 import { ConfigProvider } from "antd";
 import MainLayout from "./layouts/MainLayout";
 import Dashboard from "./pages/Dashboard";
-import ProductionLine from "./pages/ProductionLine";
+import ProductionLine from "./pages/Production";
 import WorkOrders from "./pages/WorkOrders"; // <--- 1. IMPORT THIS
 
 interface PlaceholderProps {
