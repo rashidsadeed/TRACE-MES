@@ -137,4 +137,4 @@ const EmergencyStopBar: React.FC<EmergencyStopBarProps> = ({
   );
 };
 
-export default EmergencyStopBar;
+export default React.memo(EmergencyStopBar);

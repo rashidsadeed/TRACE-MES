@@ -10,7 +10,6 @@ import {
   RequestListModal,
   AcceptOrderModal,
 } from "./components";
-import { MACHINES } from "./constants";
 import { styles } from "./styles";
 
 const { Title } = Typography;
@@ -22,6 +21,7 @@ const WorkOrders: React.FC = () => {
     stats,
     upcomingDeadlines,
     lines,
+    allMachines,
     availableMachines,
     modal,
     openCreateModal,
@@ -76,7 +76,7 @@ const WorkOrders: React.FC = () => {
       <OrdersTable
         orders={orders}
         lines={lines}
-        machines={MACHINES}
+        machines={allMachines}
         onDelete={handleDeleteOrder}
       />
 

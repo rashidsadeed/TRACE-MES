@@ -420,7 +420,7 @@ const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
                   <YAxis tick={{ fontSize: 10, fill: "#bbb" }} domain={["auto", "auto"]} />
                   <RTooltip
                     contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                    formatter={(val: number) => [`${val} °C`, "Temp"]}
+                    formatter={(val: number | undefined) => [`${val ?? 0} °C`, "Temp"]}
                   />
                   <Area
                     type="monotone"
@@ -459,7 +459,7 @@ const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
                   <YAxis tick={{ fontSize: 10, fill: "#bbb" }} domain={["auto", "auto"]} />
                   <RTooltip
                     contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                    formatter={(val: number) => [`${val} m/s²`, "Vibration"]}
+                    formatter={(val: number | undefined) => [`${val ?? 0} m/s²`, "Vibration"]}
                   />
                   <Line
                     type="monotone"
@@ -479,4 +479,4 @@ const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
   );
 };
 
-export default MachineDetailDrawer;
+export default React.memo(MachineDetailDrawer);

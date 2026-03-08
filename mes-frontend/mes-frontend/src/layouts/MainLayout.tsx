@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Layout, Menu, Avatar, Dropdown, Space, Typography, theme } from "antd";
-import type { MenuProps } from "antd"; // Import MenuProps
+import type { MenuProps } from "antd";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   DashboardOutlined,
@@ -13,6 +13,7 @@ import {
   MenuUnfoldOutlined,
   LogoutOutlined,
 } from "@ant-design/icons";
+import { useAuth } from "../auth/AuthContext";
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -21,6 +22,7 @@ const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout } = useAuth();
 
   const {
     token: { colorBgContainer, colorBgLayout },
@@ -39,14 +41,25 @@ const MainLayout: React.FC = () => {
   ];
 
   const userMenuItems: MenuProps["items"] = [
-    { key: "1", label: "My Profile", icon: <UserOutlined /> },
+    { key: "profile", label: "My Profile", icon: <UserOutlined /> },
     { type: "divider" },
-    { key: "2", label: "Logout", icon: <LogoutOutlined />, danger: true },
+    {
+      key: "logout",
+      label: "Logout",
+      icon: <LogoutOutlined />,
+      danger: true,
+    },
   ];
 
-  // FIX: Explicitly type the click handler
   const handleMenuClick: MenuProps["onClick"] = ({ key }) => {
     navigate(key);
+  };
+
+  const handleUserMenuClick: MenuProps["onClick"] = async ({ key }) => {
+    if (key === "logout") {
+      await logout();
+      navigate("/login", { replace: true });
+    }
   };
 
   return (
@@ -117,13 +130,16 @@ const MainLayout: React.FC = () => {
           <Space size="large">
             <div style={{ textAlign: "right", lineHeight: "1.2" }}>
               <Text strong style={{ display: "block" }}>
-                Admin User
+                {user?.fullName ?? "User"}
               </Text>
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Plant Manager
+                {user?.role ?? "—"}
               </Text>
             </div>
-            <Dropdown menu={{ items: userMenuItems }} trigger={["click"]}>
+            <Dropdown
+              menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
+              trigger={["click"]}
+            >
               <Avatar
                 style={{ backgroundColor: "#1890ff", cursor: "pointer" }}
                 icon={<UserOutlined />}

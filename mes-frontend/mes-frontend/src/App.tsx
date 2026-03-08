@@ -1,15 +1,27 @@
-import React from "react";
+import React, { Suspense } from "react";
 import {
   BrowserRouter as Router,
   Routes,
   Route,
   Navigate,
 } from "react-router-dom";
-import { ConfigProvider } from "antd";
+import { ConfigProvider, Spin } from "antd";
+import { AuthProvider } from "./auth/AuthContext";
+import PrivateRoute from "./auth/PrivateRoute";
 import MainLayout from "./layouts/MainLayout";
-import Dashboard from "./pages/Dashboard";
-import ProductionLine from "./pages/Production";
-import WorkOrders from "./pages/WorkOrders"; // <--- 1. IMPORT THIS
+
+// --- Lazy-loaded pages (code splitting) ---
+const Dashboard = React.lazy(() => import("./pages/Dashboard"));
+const ProductionLine = React.lazy(() => import("./pages/Production"));
+const WorkOrders = React.lazy(() => import("./pages/WorkOrders"));
+const LoginPage = React.lazy(() => import("./pages/LoginPage"));
+
+// --- Loading fallback ---
+const PageLoader: React.FC = () => (
+  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}>
+    <Spin size="large" tip="Loading..." />
+  </div>
+);
 
 interface PlaceholderProps {
   title: string;
@@ -33,24 +45,36 @@ const App: React.FC = () => {
         },
       }}
     >
-      <Router>
-        <Routes>
-          <Route path="/" element={<MainLayout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="production" element={<ProductionLine />} />
+      <AuthProvider>
+        <Router>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              {/* Public route */}
+              <Route path="/login" element={<LoginPage />} />
 
-            {/* 2. UPDATE THIS LINE */}
-            <Route path="work-orders" element={<WorkOrders />} />
-
-            <Route
-              path="inventory"
-              element={<Placeholder title="Inventory" />}
-            />
-            <Route path="settings" element={<Placeholder title="Settings" />} />
-          </Route>
-        </Routes>
-      </Router>
+              {/* Protected routes */}
+              <Route
+                path="/"
+                element={
+                  <PrivateRoute>
+                    <MainLayout />
+                  </PrivateRoute>
+                }
+              >
+                <Route index element={<Navigate to="/dashboard" replace />} />
+                <Route path="dashboard" element={<Dashboard />} />
+                <Route path="production" element={<ProductionLine />} />
+                <Route path="work-orders" element={<WorkOrders />} />
+                <Route
+                  path="inventory"
+                  element={<Placeholder title="Inventory" />}
+                />
+                <Route path="settings" element={<Placeholder title="Settings" />} />
+              </Route>
+            </Routes>
+          </Suspense>
+        </Router>
+      </AuthProvider>
     </ConfigProvider>
   );
 };

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Form, message } from "antd";
 import dayjs from "dayjs";
 import type {
@@ -11,12 +11,7 @@ import type {
   StartJobFormValues,
   AcceptOrderFormValues,
 } from "../types";
-import {
-  INITIAL_MACHINES,
-  INITIAL_LINES,
-  INITIAL_JOBS,
-  INITIAL_PENDING_ORDERS,
-} from "../constants";
+import * as productionService from "../../../services/productionService";
 
 /** Result of resolving form values into job assignment info. */
 interface AssignmentResult {
@@ -27,11 +22,29 @@ interface AssignmentResult {
 
 export const useProduction = () => {
   // --- Core Data ---
-  const [machines, setMachines] = useState<Machine[]>(INITIAL_MACHINES);
-  const [lines, setLines] = useState<ProductionLine[]>(INITIAL_LINES);
-  const [jobs, setJobs] = useState<ProductionJob[]>(INITIAL_JOBS);
-  const [pendingOrders, setPendingOrders] =
-    useState<PendingOrder[]>(INITIAL_PENDING_ORDERS);
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [lines, setLines] = useState<ProductionLine[]>([]);
+  const [jobs, setJobs] = useState<ProductionJob[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  // --- Fetch initial data from service ---
+  useEffect(() => {
+    const fetchData = async () => {
+      const [m, l, j, po] = await Promise.all([
+        productionService.getMachines(),
+        productionService.getLines(),
+        productionService.getJobs(),
+        productionService.getPendingOrders(),
+      ]);
+      setMachines(m as Machine[]);
+      setLines(l as ProductionLine[]);
+      setJobs(j as ProductionJob[]);
+      setPendingOrders(po as PendingOrder[]);
+      setDataLoaded(true);
+    };
+    fetchData();
+  }, []);
 
   // --- Modal ---
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
@@ -103,12 +116,6 @@ export const useProduction = () => {
     );
   }, []);
 
-  /**
-   * Resolves form values into assignment info.
-   * - existing-line: returns lineId
-   * - machine: returns assignedMachineIds directly (NO fake line)
-   * - custom-line: creates new line, returns lineId
-   */
   const resolveAssignment = useCallback(
     (
       type: AssignmentType,
@@ -124,7 +131,6 @@ export const useProduction = () => {
       }
 
       if (type === "machine" && values.machineIds?.length) {
-        // Direct machine assignment — no line created
         return {
           assignmentType: type,
           assignedMachineIds: values.machineIds,
@@ -243,10 +249,6 @@ export const useProduction = () => {
     [modal, resolveAssignment, closeModal],
   );
 
-  /**
-   * Transitions a Scheduled job → Running.
-   * Marks assigned machines as busy, updates line status.
-   */
   const handleRunJob = useCallback(
     (key: string) => {
       const job = jobs.find((j) => j.key === key);
@@ -254,24 +256,20 @@ export const useProduction = () => {
 
       const now = dayjs().format("hh:mm A");
 
-      // Mark job as running
       setJobs((prev) =>
         prev.map((j) =>
           j.key === key ? { ...j, status: "Running" as const, startTime: now } : j,
         ),
       );
 
-      // Activate machines
       if (job.assignmentType === "machine" && job.assignedMachineIds?.length) {
         markMachinesBusy(job.assignedMachineIds, job.id);
       }
 
       if (job.lineId) {
-        // Activate machines on the line
         const line = lines.find((l) => l.id === job.lineId);
         if (line) {
           markMachinesBusy(line.machineIds, job.id, line.id);
-          // Set line as Active
           setLines((prev) =>
             prev.map((l) =>
               l.id === job.lineId
@@ -292,7 +290,6 @@ export const useProduction = () => {
       const job = jobs.find((j) => j.key === key);
       if (!job) return;
 
-      // Free machines if they were assigned
       if (job.assignedMachineIds?.length) {
         freeMachines(job.assignedMachineIds);
       }
@@ -349,9 +346,6 @@ export const useProduction = () => {
     [jobs],
   );
 
-  /**
-   * STOP ALL — halts every running job, every active machine, every active line.
-   */
   const handleStopAll = useCallback(() => {
     setJobs((prev) =>
       prev.map((j) =>
@@ -371,22 +365,17 @@ export const useProduction = () => {
     message.error("EMERGENCY STOP: All machines and jobs halted.");
   }, []);
 
-  /**
-   * STOP JOB — halts a single running job and its assigned machines.
-   */
   const handleStopJob = useCallback(
     (key: string) => {
       const job = jobs.find((j) => j.key === key);
       if (!job) return;
 
-      // Pause the job
       setJobs((prev) =>
         prev.map((j) =>
           j.key === key ? { ...j, status: "Paused" as const } : j,
         ),
       );
 
-      // Collect all machine IDs to halt
       const machineIdsToHalt: string[] = [];
 
       if (job.assignedMachineIds?.length) {
@@ -428,6 +417,7 @@ export const useProduction = () => {
     pendingOrders,
     availableMachines,
     stats,
+    dataLoaded,
 
     modal,
     openStartJobModal,

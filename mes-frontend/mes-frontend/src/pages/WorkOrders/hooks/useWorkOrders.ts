@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Form, message } from "antd";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -9,13 +9,10 @@ import type {
   CreateOrderFormValues,
   AcceptOrderFormValues,
   AssignmentType,
+  LineInfo,
+  MachineInfo,
 } from "../types";
-import {
-  INITIAL_WORK_ORDERS,
-  INITIAL_ORDER_REQUESTS,
-  LINES,
-  MACHINES,
-} from "../constants";
+import * as workOrderService from "../../../services/workOrderService";
 import {
   buildWorkOrder,
   resolveAssignment,
@@ -26,8 +23,27 @@ import {
 
 export const useWorkOrders = () => {
   // --- Core Data ---
-  const [orders, setOrders] = useState<WorkOrder[]>(INITIAL_WORK_ORDERS);
-  const [requests, setRequests] = useState<OrderRequest[]>(INITIAL_ORDER_REQUESTS);
+  const [orders, setOrders] = useState<WorkOrder[]>([]);
+  const [requests, setRequests] = useState<OrderRequest[]>([]);
+  const [lines, setLines] = useState<LineInfo[]>([]);
+  const [allMachines, setAllMachines] = useState<MachineInfo[]>([]);
+
+  // --- Fetch initial data from service ---
+  useEffect(() => {
+    const fetchData = async () => {
+      const [wo, req, ln, mc] = await Promise.all([
+        workOrderService.getWorkOrders(),
+        workOrderService.getOrderRequests(),
+        workOrderService.getLines(),
+        workOrderService.getMachines(),
+      ]);
+      setOrders(wo as WorkOrder[]);
+      setRequests(req as OrderRequest[]);
+      setLines(ln as LineInfo[]);
+      setAllMachines(mc as MachineInfo[]);
+    };
+    fetchData();
+  }, []);
 
   // --- Modal State (single source of truth) ---
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
@@ -50,8 +66,8 @@ export const useWorkOrders = () => {
 
   // --- Available Machines (not in use/maintenance) ---
   const availableMachines = useMemo(
-    () => MACHINES.filter((m) => m.status === "Available"),
-    [],
+    () => allMachines.filter((m) => m.status === "Available"),
+    [allMachines],
   );
 
   // --- Derived Data (memoized) ---
@@ -192,7 +208,8 @@ export const useWorkOrders = () => {
     upcomingDeadlines,
 
     // Lines & Machines
-    lines: LINES,
+    lines,
+    allMachines,
     availableMachines,
 
     // Modal
