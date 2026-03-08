@@ -1,15 +1,20 @@
 import React from "react";
 import {
-  Modal, Form, Input, InputNumber, DatePicker, Button, Row, Col, Space, Typography,
+  Modal,
+  Form,
+  Input,
+  InputNumber,
+  DatePicker,
+  Button,
+  Row,
+  Col,
+  Space,
+  Typography,
 } from "antd";
 import type { FormInstance } from "antd";
 import type { Dayjs } from "dayjs";
-import type {
-  WorkOrder, OrderRequest, AcceptOrderFormValues,
-  AssignmentType, LineInfo, MachineInfo,
-} from "../types";
-import { PrioritySelect } from "./FormSelects";
-import AssignmentFields from "./AssignmentFields";
+import type { WorkOrder, OrderRequest, AcceptOrderFormValues } from "../types";
+import { PrioritySelect, LineSelect } from "./FormSelects";
 import ConflictAlert from "./ConflictAlert";
 import { styles } from "../styles";
 
@@ -21,10 +26,6 @@ interface AcceptOrderModalProps {
   form: FormInstance<AcceptOrderFormValues>;
   onFinish: (values: AcceptOrderFormValues) => void;
   onCancel: () => void;
-  // Assignment
-  assignmentType: AssignmentType | undefined;
-  lines: LineInfo[];
-  availableMachines: MachineInfo[];
   // Conflict
   dateConflicts: WorkOrder[];
   conflictAcknowledged: boolean;
@@ -39,9 +40,6 @@ const AcceptOrderModal: React.FC<AcceptOrderModalProps> = ({
   form,
   onFinish,
   onCancel,
-  assignmentType,
-  lines,
-  availableMachines,
   dateConflicts,
   conflictAcknowledged,
   onConflictAcknowledge,
@@ -53,7 +51,6 @@ const AcceptOrderModal: React.FC<AcceptOrderModalProps> = ({
     open={open}
     onCancel={onCancel}
     footer={null}
-    width={640}
   >
     {request && (
       <div style={styles.clientInfoBox}>
@@ -70,6 +67,14 @@ const AcceptOrderModal: React.FC<AcceptOrderModalProps> = ({
       </Form.Item>
       <Form.Item name="quantity" hidden>
         <InputNumber />
+      </Form.Item>
+
+      <Form.Item
+        name="assignedLine"
+        label="Assign Production Line"
+        rules={[{ required: true, message: "Production line is required" }]}
+      >
+        <LineSelect />
       </Form.Item>
 
       <Row gutter={16}>
@@ -92,13 +97,6 @@ const AcceptOrderModal: React.FC<AcceptOrderModalProps> = ({
           </Form.Item>
         </Col>
       </Row>
-
-      {/* Assignment Fields (Line / Machine / Custom Line) */}
-      <AssignmentFields
-        assignmentType={assignmentType}
-        lines={lines}
-        availableMachines={availableMachines}
-      />
 
       <ConflictAlert
         conflicts={dateConflicts}

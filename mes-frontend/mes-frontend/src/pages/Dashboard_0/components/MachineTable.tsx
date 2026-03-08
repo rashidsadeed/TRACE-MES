@@ -1,6 +1,5 @@
 import React, { useMemo } from "react";
-import { Table, Card, Tag, Progress, Button } from "antd";
-import { EyeOutlined } from "@ant-design/icons";
+import { Table, Card, Tag, Progress } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { MachineLog } from "../types";
 import { MACHINE_STATUS_COLOR, TEMP_DANGER_THRESHOLD } from "../constants";
@@ -8,10 +7,9 @@ import { styles, getTempColor } from "../styles";
 
 interface MachineTableProps {
   data: MachineLog[];
-  onViewDetail: (machineId: string) => void;
 }
 
-const MachineTable: React.FC<MachineTableProps> = React.memo(({ data, onViewDetail }) => {
+const MachineTable: React.FC<MachineTableProps> = React.memo(({ data }) => {
   const columns: ColumnsType<MachineLog> = useMemo(
     () => [
       {
@@ -58,23 +56,8 @@ const MachineTable: React.FC<MachineTableProps> = React.memo(({ data, onViewDeta
         dataIndex: "lastMaint",
         key: "lastMaint",
       },
-      {
-        title: "Action",
-        key: "action",
-        width: 100,
-        render: (_: unknown, record: MachineLog) => (
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => onViewDetail(record.machine)}
-          >
-            Details
-          </Button>
-        ),
-      },
     ],
-    [onViewDetail],
+    [],
   );
 
   return (

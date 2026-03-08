@@ -1,36 +1,28 @@
 import React, { useMemo } from "react";
 import {
-  Table, Card, Tag, Button, Space, Popconfirm, Tooltip, Progress, Typography,
+  Table,
+  Card,
+  Tag,
+  Button,
+  Space,
+  Popconfirm,
+  Tooltip,
+  Progress,
+  Typography,
 } from "antd";
 import type { TableProps } from "antd";
 import { EditOutlined, DeleteOutlined } from "@ant-design/icons";
-import type { WorkOrder, LineInfo, MachineInfo } from "../types";
-import { STATUS_CONFIG, PRIORITY_COLOR, MACHINE_TYPE_COLOR } from "../constants";
+import type { WorkOrder } from "../types";
+import { STATUS_CONFIG, PRIORITY_COLOR } from "../constants";
 
 const { Text } = Typography;
 
 interface OrdersTableProps {
   orders: WorkOrder[];
-  lines: LineInfo[];
-  machines: MachineInfo[];
   onDelete: (key: string) => void;
 }
 
-const OrdersTable: React.FC<OrdersTableProps> = ({
-  orders,
-  lines,
-  machines,
-  onDelete,
-}) => {
-  const lineMap = useMemo(
-    () => new Map(lines.map((l) => [l.id, l.name])),
-    [lines],
-  );
-  const machineMap = useMemo(
-    () => new Map(machines.map((m) => [m.id, m])),
-    [machines],
-  );
-
+const OrdersTable: React.FC<OrdersTableProps> = ({ orders, onDelete }) => {
   const columns: TableProps<WorkOrder>["columns"] = useMemo(
     () => [
       {
@@ -53,54 +45,6 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         ),
       },
       {
-        title: "Assignment",
-        key: "assignment",
-        render: (_: unknown, record: WorkOrder) => {
-          // Direct machine assignment
-          if (
-            record.assignmentType === "machine" &&
-            record.assignedMachineIds?.length
-          ) {
-            return (
-              <Space wrap size={4}>
-                {record.assignedMachineIds.map((id) => {
-                  const m = machineMap.get(id);
-                  return (
-                    <Tooltip key={id} title={m?.name}>
-                      <Tag color={m ? MACHINE_TYPE_COLOR[m.type] : undefined}>
-                        {id}
-                      </Tag>
-                    </Tooltip>
-                  );
-                })}
-              </Space>
-            );
-          }
-
-          // Line assignment (existing or custom)
-          if (record.assignedLine) {
-            const name = lineMap.get(record.assignedLine);
-            const isCustom = record.assignmentType === "custom-line";
-            return (
-              <Space size={4}>
-                <Tag color="geekblue">
-                  {name
-                    ? `${record.assignedLine} — ${name}`
-                    : record.assignedLine}
-                </Tag>
-                {isCustom && (
-                  <Tag color="purple" style={{ fontSize: 10 }}>
-                    CUSTOM
-                  </Tag>
-                )}
-              </Space>
-            );
-          }
-
-          return <Text type="secondary">Unassigned</Text>;
-        },
-      },
-      {
         title: "Status",
         dataIndex: "status",
         key: "status",
@@ -116,12 +60,11 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
       {
         title: "Progress",
         key: "progress",
-        width: 180,
+        width: 200,
         render: (_: unknown, record: WorkOrder) => {
-          const percent =
-            record.quantity > 0
-              ? Math.round((record.completed / record.quantity) * 100)
-              : 0;
+          const percent = record.quantity > 0
+            ? Math.round((record.completed / record.quantity) * 100)
+            : 0;
           return (
             <Tooltip title={`${record.completed} / ${record.quantity} units`}>
               <Progress
@@ -159,7 +102,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         ),
       },
     ],
-    [onDelete, lineMap, machineMap],
+    [onDelete],
   );
 
   return (

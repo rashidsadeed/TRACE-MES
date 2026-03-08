@@ -1,14 +1,9 @@
 import React from "react";
-import {
-  Modal, Form, Input, InputNumber, DatePicker, Button, Row, Col,
-} from "antd";
+import { Modal, Form, Input, InputNumber, DatePicker, Button, Row, Col } from "antd";
 import type { FormInstance } from "antd";
 import type { Dayjs } from "dayjs";
-import type {
-  WorkOrder, CreateOrderFormValues, AssignmentType, LineInfo, MachineInfo,
-} from "../types";
-import { PrioritySelect } from "./FormSelects";
-import AssignmentFields from "./AssignmentFields";
+import type { WorkOrder, CreateOrderFormValues } from "../types";
+import { PrioritySelect, LineSelect } from "./FormSelects";
 import ConflictAlert from "./ConflictAlert";
 import { styles } from "../styles";
 
@@ -17,10 +12,6 @@ interface CreateOrderModalProps {
   form: FormInstance<CreateOrderFormValues>;
   onFinish: (values: CreateOrderFormValues) => void;
   onCancel: () => void;
-  // Assignment
-  assignmentType: AssignmentType | undefined;
-  lines: LineInfo[];
-  availableMachines: MachineInfo[];
   // Conflict
   dateConflicts: WorkOrder[];
   conflictAcknowledged: boolean;
@@ -34,9 +25,6 @@ const CreateOrderModal: React.FC<CreateOrderModalProps> = ({
   form,
   onFinish,
   onCancel,
-  assignmentType,
-  lines,
-  availableMachines,
   dateConflicts,
   conflictAcknowledged,
   onConflictAcknowledge,
@@ -48,7 +36,6 @@ const CreateOrderModal: React.FC<CreateOrderModalProps> = ({
     open={open}
     onCancel={onCancel}
     footer={null}
-    width={640}
   >
     <Form form={form} layout="vertical" onFinish={onFinish}>
       <Form.Item
@@ -76,12 +63,13 @@ const CreateOrderModal: React.FC<CreateOrderModalProps> = ({
         </Col>
       </Row>
 
-      {/* Assignment Fields (Line / Machine / Custom Line) */}
-      <AssignmentFields
-        assignmentType={assignmentType}
-        lines={lines}
-        availableMachines={availableMachines}
-      />
+      <Form.Item
+        name="assignedLine"
+        label="Assigned Line"
+        rules={[{ required: true, message: "Production line is required" }]}
+      >
+        <LineSelect />
+      </Form.Item>
 
       <Form.Item
         name="dueDate"

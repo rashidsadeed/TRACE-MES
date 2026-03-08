@@ -8,17 +8,14 @@ import type {
   ModalState,
   CreateOrderFormValues,
   AcceptOrderFormValues,
-  AssignmentType,
 } from "../types";
 import {
   INITIAL_WORK_ORDERS,
   INITIAL_ORDER_REQUESTS,
-  LINES,
-  MACHINES,
 } from "../constants";
 import {
   buildWorkOrder,
-  resolveAssignment,
+  generateOrderId,
   computeStats,
   findUpcomingDeadlines,
   findDateConflicts,
@@ -40,26 +37,9 @@ export const useWorkOrders = () => {
   const [createForm] = Form.useForm<CreateOrderFormValues>();
   const [acceptForm] = Form.useForm<AcceptOrderFormValues>();
 
-  // Watch assignmentType from both forms
-  const createAssignmentType = Form.useWatch("assignmentType", createForm) as
-    | AssignmentType
-    | undefined;
-  const acceptAssignmentType = Form.useWatch("assignmentType", acceptForm) as
-    | AssignmentType
-    | undefined;
-
-  // --- Available Machines (not in use/maintenance) ---
-  const availableMachines = useMemo(
-    () => MACHINES.filter((m) => m.status === "Available"),
-    [],
-  );
-
   // --- Derived Data (memoized) ---
   const stats = useMemo(() => computeStats(orders), [orders]);
-  const upcomingDeadlines = useMemo(
-    () => findUpcomingDeadlines(orders),
-    [orders],
-  );
+  const upcomingDeadlines = useMemo(() => findUpcomingDeadlines(orders), [orders]);
 
   // --- Conflict Logic ---
   const checkDateConflicts = useCallback(
@@ -100,10 +80,7 @@ export const useWorkOrders = () => {
       });
 
       // Check conflicts for the pre-filled date
-      const conflicts = findDateConflicts(
-        orders,
-        dayjs(request.requestedDate),
-      );
+      const conflicts = findDateConflicts(orders, dayjs(request.requestedDate));
       setDateConflicts(conflicts);
     },
     [acceptForm, orders, resetConflicts],
@@ -119,20 +96,12 @@ export const useWorkOrders = () => {
   // --- CRUD Handlers ---
   const handleCreateOrder = useCallback(
     (values: CreateOrderFormValues) => {
-      const assignment = resolveAssignment({
-        assignmentType: values.assignmentType,
-        lineId: values.lineId,
-        machineIds: values.machineIds,
-        customLineName: values.customLineName,
-        customMachineIds: values.customMachineIds,
-      });
-
       const newOrder = buildWorkOrder({
         product: values.product,
         quantity: values.quantity,
         priority: values.priority,
         dueDate: values.dueDate,
-        ...assignment,
+        assignedLine: values.assignedLine,
       });
 
       setOrders((prev) => [newOrder, ...prev]);
@@ -147,29 +116,19 @@ export const useWorkOrders = () => {
       if (modal.type !== "accept") return;
       const { request } = modal;
 
-      const assignment = resolveAssignment({
-        assignmentType: values.assignmentType,
-        lineId: values.lineId,
-        machineIds: values.machineIds,
-        customLineName: values.customLineName,
-        customMachineIds: values.customMachineIds,
-      });
-
       const newOrder = buildWorkOrder({
         id: `WO-REQ-${request.key}`,
         product: request.product,
         quantity: request.quantity,
         priority: values.priority,
         dueDate: values.dueDate,
-        ...assignment,
+        assignedLine: values.assignedLine,
       });
 
       setOrders((prev) => [newOrder, ...prev]);
       setRequests((prev) => prev.filter((r) => r.key !== request.key));
       closeModal();
-      message.success(
-        `Request from ${request.client} accepted into production.`,
-      );
+      message.success(`Request from ${request.client} accepted into production.`);
     },
     [modal, closeModal],
   );
@@ -191,20 +150,12 @@ export const useWorkOrders = () => {
     stats,
     upcomingDeadlines,
 
-    // Lines & Machines
-    lines: LINES,
-    availableMachines,
-
     // Modal
     modal,
     openCreateModal,
     openRequestList,
     openAcceptModal,
     closeModal,
-
-    // Assignment type watchers
-    createAssignmentType,
-    acceptAssignmentType,
 
     // Conflicts
     dateConflicts,

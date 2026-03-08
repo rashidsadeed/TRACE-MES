@@ -5,10 +5,7 @@ import {
   SyncOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import type {
-  OrderStatus, Priority, WorkOrder, OrderRequest,
-  MachineInfo, LineInfo, MachineType,
-} from "./types";
+import type { OrderStatus, Priority, WorkOrder, OrderRequest } from "./types";
 
 // --- Status visual configuration ---
 
@@ -30,16 +27,7 @@ export const PRIORITY_COLOR: Record<Priority, string> = {
   Low: "green",
 };
 
-export const MACHINE_TYPE_COLOR: Record<MachineType, string> = {
-  CNC: "blue",
-  Press: "volcano",
-  Assembly: "green",
-  Welding: "orange",
-  Mold: "purple",
-  Paint: "cyan",
-};
-
-// --- Select options ---
+// --- Select options as data ---
 
 export const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
   { value: "High", label: "High" },
@@ -47,29 +35,15 @@ export const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
   { value: "Low", label: "Low" },
 ];
 
+export const LINE_OPTIONS: { value: string; label: string }[] = [
+  { value: "LINE-01", label: "LINE-01" },
+  { value: "LINE-02", label: "LINE-02" },
+  { value: "LINE-03", label: "LINE-03" },
+];
+
 // --- Deadline threshold (days) ---
 
 export const DEADLINE_THRESHOLD_DAYS = 3;
-
-// --- Shared Lines & Machines (mirrors Production data) ---
-
-export const LINES: LineInfo[] = [
-  { id: "LINE-01", name: "Auto Parts Assembly", status: "Active" },
-  { id: "LINE-02", name: "Electronic Board Line", status: "Idle" },
-  { id: "LINE-03", name: "Heavy Press Line", status: "Idle" },
-];
-
-export const MACHINES: MachineInfo[] = [
-  { id: "CNC-001", name: "Haas VF-2SS", type: "CNC", status: "In Use" },
-  { id: "CNC-002", name: "DMG Mori CMX 50", type: "CNC", status: "Available" },
-  { id: "PRESS-001", name: "Hydraulic Press 200T", type: "Press", status: "Available" },
-  { id: "PRESS-002", name: "Stamping Press A", type: "Press", status: "Available" },
-  { id: "ASM-001", name: "Robot Assembly Cell", type: "Assembly", status: "In Use" },
-  { id: "ASM-002", name: "Manual Assembly Station", type: "Assembly", status: "Available" },
-  { id: "WELD-001", name: "MIG Welder R500", type: "Welding", status: "Available" },
-  { id: "MOLD-001", name: "Injection Molder 300T", type: "Mold", status: "Available" },
-  { id: "PAINT-001", name: "Spray Booth A", type: "Paint", status: "Maintenance" },
-];
 
 // --- Mock Data ---
 
@@ -83,7 +57,6 @@ export const INITIAL_WORK_ORDERS: WorkOrder[] = [
     priority: "High",
     status: "In Progress",
     dueDate: dayjs().add(1, "day").format("YYYY-MM-DD"),
-    assignmentType: "existing-line",
     assignedLine: "LINE-01",
   },
   {
@@ -95,8 +68,7 @@ export const INITIAL_WORK_ORDERS: WorkOrder[] = [
     priority: "Normal",
     status: "Pending",
     dueDate: "2024-03-20",
-    assignmentType: "machine",
-    assignedMachineIds: ["CNC-002", "PRESS-001"],
+    assignedLine: "LINE-02",
   },
 ];
 

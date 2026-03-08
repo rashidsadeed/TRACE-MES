@@ -4,6 +4,7 @@ import type { Dayjs } from "dayjs";
 
 export type Priority = "High" | "Normal" | "Low";
 export type OrderStatus = "Pending" | "In Progress" | "Completed" | "Delayed";
+export type AssignmentType = "existing-line" | "machine" | "custom-line";
 
 export interface WorkOrder {
   key: string;
@@ -14,7 +15,10 @@ export interface WorkOrder {
   priority: Priority;
   status: OrderStatus;
   dueDate: string;
-  assignedLine: string;
+  // Assignment
+  assignmentType: AssignmentType;
+  assignedLine?: string;          // line id (existing or custom)
+  assignedMachineIds?: string[];  // direct machine or custom-line machines
 }
 
 export interface OrderRequest {
@@ -25,6 +29,26 @@ export interface OrderRequest {
   requestedDate: string;
 }
 
+// --- Shared resource types (mirrors Production) ---
+
+export type MachineType = "CNC" | "Press" | "Assembly" | "Welding" | "Mold" | "Paint";
+export type MachineStatus = "Available" | "In Use" | "Maintenance" | "Error";
+export type LineStatus = "Active" | "Idle" | "Maintenance";
+
+export interface MachineInfo {
+  id: string;
+  name: string;
+  type: MachineType;
+  status: MachineStatus;
+}
+
+export interface LineInfo {
+  id: string;
+  name: string;
+  status: LineStatus;
+  isCustom?: boolean;
+}
+
 // --- Form Types ---
 
 export interface CreateOrderFormValues {
@@ -32,7 +56,12 @@ export interface CreateOrderFormValues {
   quantity: number;
   priority: Priority;
   dueDate: Dayjs;
-  assignedLine: string;
+  // Assignment fields
+  assignmentType: AssignmentType;
+  lineId?: string;
+  machineIds?: string[];
+  customLineName?: string;
+  customMachineIds?: string[];
 }
 
 export interface AcceptOrderFormValues {
@@ -40,7 +69,12 @@ export interface AcceptOrderFormValues {
   quantity: number;
   priority: Priority;
   dueDate: Dayjs;
-  assignedLine: string;
+  // Assignment fields
+  assignmentType: AssignmentType;
+  lineId?: string;
+  machineIds?: string[];
+  customLineName?: string;
+  customMachineIds?: string[];
 }
 
 // --- Modal State ---

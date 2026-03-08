@@ -10,7 +10,6 @@ import {
   RequestListModal,
   AcceptOrderModal,
 } from "./components";
-import { MACHINES } from "./constants";
 import { styles } from "./styles";
 
 const { Title } = Typography;
@@ -21,15 +20,11 @@ const WorkOrders: React.FC = () => {
     requests,
     stats,
     upcomingDeadlines,
-    lines,
-    availableMachines,
     modal,
     openCreateModal,
     openRequestList,
     openAcceptModal,
     closeModal,
-    createAssignmentType,
-    acceptAssignmentType,
     dateConflicts,
     conflictAcknowledged,
     setConflictAcknowledged,
@@ -73,12 +68,7 @@ const WorkOrders: React.FC = () => {
       </div>
 
       {/* Orders Table */}
-      <OrdersTable
-        orders={orders}
-        lines={lines}
-        machines={MACHINES}
-        onDelete={handleDeleteOrder}
-      />
+      <OrdersTable orders={orders} onDelete={handleDeleteOrder} />
 
       {/* Modal: Create Order */}
       <CreateOrderModal
@@ -86,9 +76,6 @@ const WorkOrders: React.FC = () => {
         form={createForm}
         onFinish={handleCreateOrder}
         onCancel={closeModal}
-        assignmentType={createAssignmentType}
-        lines={lines}
-        availableMachines={availableMachines}
         dateConflicts={dateConflicts}
         conflictAcknowledged={conflictAcknowledged}
         onConflictAcknowledge={setConflictAcknowledged}
@@ -112,9 +99,6 @@ const WorkOrders: React.FC = () => {
         form={acceptForm}
         onFinish={handleAcceptRequest}
         onCancel={closeModal}
-        assignmentType={acceptAssignmentType}
-        lines={lines}
-        availableMachines={availableMachines}
         dateConflicts={dateConflicts}
         conflictAcknowledged={conflictAcknowledged}
         onConflictAcknowledge={setConflictAcknowledged}

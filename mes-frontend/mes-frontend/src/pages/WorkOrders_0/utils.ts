@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
-import type { Priority, AssignmentType, WorkOrder, OrderStats } from "./types";
+import type { Priority, WorkOrder, OrderStats } from "./types";
 import { DEADLINE_THRESHOLD_DAYS } from "./constants";
 
 /**
@@ -18,44 +18,6 @@ export const generateOrderId = (prefix = "WO"): string => {
 export const generateKey = (): string => Date.now().toString();
 
 /**
- * Resolves form assignment fields into a flat assignment object.
- */
-export const resolveAssignment = (params: {
-  assignmentType: AssignmentType;
-  lineId?: string;
-  machineIds?: string[];
-  customLineName?: string;
-  customMachineIds?: string[];
-}): {
-  assignmentType: AssignmentType;
-  assignedLine?: string;
-  assignedMachineIds?: string[];
-} => {
-  switch (params.assignmentType) {
-    case "existing-line":
-      return {
-        assignmentType: "existing-line",
-        assignedLine: params.lineId,
-      };
-    case "machine":
-      return {
-        assignmentType: "machine",
-        assignedMachineIds: params.machineIds,
-      };
-    case "custom-line": {
-      const customId = `LINE-C-${Date.now().toString(36).toUpperCase()}`;
-      return {
-        assignmentType: "custom-line",
-        assignedLine: customId,
-        assignedMachineIds: params.customMachineIds,
-      };
-    }
-    default:
-      return { assignmentType: "existing-line" };
-  }
-};
-
-/**
  * Builds a new WorkOrder object from common parameters.
  */
 export const buildWorkOrder = (params: {
@@ -64,9 +26,7 @@ export const buildWorkOrder = (params: {
   quantity: number;
   priority: Priority;
   dueDate: Dayjs | null;
-  assignmentType: AssignmentType;
-  assignedLine?: string;
-  assignedMachineIds?: string[];
+  assignedLine: string;
 }): WorkOrder => ({
   key: generateKey(),
   id: params.id ?? generateOrderId(),
@@ -76,9 +36,7 @@ export const buildWorkOrder = (params: {
   priority: params.priority,
   status: "Pending",
   dueDate: params.dueDate ? params.dueDate.format("YYYY-MM-DD") : "TBD",
-  assignmentType: params.assignmentType,
   assignedLine: params.assignedLine,
-  assignedMachineIds: params.assignedMachineIds,
 });
 
 /**
