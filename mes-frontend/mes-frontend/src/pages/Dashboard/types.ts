@@ -24,6 +24,20 @@ export interface MachineLog {
   lastMaint: string;
 }
 
+// --- Error Logs ---
+
+export type ErrorSeverity = "Critical" | "Warning" | "Info";
+export type ErrorStatus = "Active" | "Resolved";
+
+export interface ErrorLog {
+  key: string;
+  timestamp: string;
+  errorCode: string;
+  message: string;
+  severity: ErrorSeverity;
+  status: ErrorStatus;
+}
+
 // --- Machine Detail (from CNC JSON payload) ---
 
 export type CNCStatus = "RUNNING" | "IDLE" | "ALARM" | "MAINTENANCE" | "SETUP";
@@ -48,6 +62,7 @@ export interface MachineDetail {
     feed: number;
     spindle: number;
   };
+  errorLogs?: ErrorLog[];
 }
 
 // --- Telemetry (real-time data point) ---

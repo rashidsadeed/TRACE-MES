@@ -5,8 +5,9 @@ import {
   MOCK_MACHINE_LOGS,
   MOCK_MACHINE_DETAILS,
   MOCK_TELEMETRY_BASE,
+  MOCK_ERROR_LOGS,
 } from "./mockData";
-import type { MockKPIData, MockMachineLog, MockMachineDetail } from "./mockData";
+import type { MockKPIData, MockMachineLog, MockMachineDetail, MockErrorLog } from "./mockData";
 
 /** Simulates network delay for mock mode */
 const delay = (ms = 300) => new Promise((r) => setTimeout(r, ms));
@@ -54,4 +55,26 @@ export const getTelemetryBase = async (
   }
   const { data } = await apiClient.get(`/dashboard/machines/${machineId}/telemetry-base`);
   return data;
+};
+
+// --- Machine Error Logs ---
+
+export const getMachineErrorLogs = async (machineId: string): Promise<MockErrorLog[]> => {
+  if (isMockMode()) {
+    await delay(200);
+    return MOCK_ERROR_LOGS[machineId] ?? [];
+  }
+  const { data } = await apiClient.get<MockErrorLog[]>(`/dashboard/machines/${machineId}/errors`);
+  return data;
+};
+
+// --- Acknowledge / Reset Alarm ---
+
+export const resetMachineAlarm = async (machineId: string): Promise<void> => {
+  if (isMockMode()) {
+    await delay(500);
+    // In mock mode, just simulate success
+    return;
+  }
+  await apiClient.post(`/dashboard/machines/${machineId}/reset-alarm`);
 };

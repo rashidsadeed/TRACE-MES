@@ -3,8 +3,8 @@ import { Row, Col, Typography } from "antd";
 import { KPICard, MachineTable, MachineDetailDrawer } from "./components";
 import { useLiveTelemetry } from "./hooks/useLiveTelemetry";
 import { styles } from "./styles";
-import { getKPIs, getMachineLogs, getMachineDetail } from "../../services/dashboardService";
-import type { KPIData, MachineLog, MachineDetail } from "./types";
+import { getKPIs, getMachineLogs, getMachineDetail, getMachineErrorLogs, resetMachineAlarm } from "../../services/dashboardService";
+import type { KPIData, MachineLog, MachineDetail, ErrorLog } from "./types";
 import {
   RocketOutlined,
   ThunderboltOutlined,
@@ -27,6 +27,7 @@ const Dashboard: React.FC = () => {
   const [kpiData, setKpiData] = useState<KPIData[]>([]);
   const [machineLogData, setMachineLogData] = useState<MachineLog[]>([]);
   const [detail, setDetail] = useState<MachineDetail | null>(null);
+  const [errorLogs, setErrorLogs] = useState<ErrorLog[]>([]);
 
   const { data: telemetryData, latest: latestTelemetry } = useLiveTelemetry(selectedMachine);
 
@@ -52,8 +53,12 @@ const Dashboard: React.FC = () => {
       return;
     }
     const fetchDetail = async () => {
-      const d = await getMachineDetail(selectedMachine);
+      const [d, logs] = await Promise.all([
+        getMachineDetail(selectedMachine),
+        getMachineErrorLogs(selectedMachine),
+      ]);
       setDetail(d);
+      setErrorLogs(logs);
     };
     fetchDetail();
   }, [selectedMachine]);
@@ -64,6 +69,14 @@ const Dashboard: React.FC = () => {
 
   const handleCloseDrawer = useCallback(() => {
     setSelectedMachine(null);
+    setErrorLogs([]);
+  }, []);
+
+  const handleResetAlarm = useCallback(async (machineId: string) => {
+    await resetMachineAlarm(machineId);
+    // Refresh error logs after reset
+    const updatedLogs = await getMachineErrorLogs(machineId);
+    setErrorLogs(updatedLogs);
   }, []);
 
   return (
@@ -98,7 +111,9 @@ const Dashboard: React.FC = () => {
         detail={detail}
         telemetryData={telemetryData}
         latestTelemetry={latestTelemetry}
+        errorLogs={errorLogs}
         onClose={handleCloseDrawer}
+        onResetAlarm={handleResetAlarm}
       />
     </div>
   );

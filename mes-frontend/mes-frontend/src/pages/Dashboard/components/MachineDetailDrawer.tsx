@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Drawer,
   Badge,
@@ -13,6 +13,10 @@ import {
   Descriptions,
   Divider,
   Tooltip,
+  Table,
+  Button,
+  message,
+  Empty,
 } from "antd";
 import {
   CodeOutlined,
@@ -22,6 +26,10 @@ import {
   DashboardOutlined,
   ToolOutlined,
   ThunderboltOutlined,
+  WarningOutlined,
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import {
   AreaChart,
@@ -34,12 +42,13 @@ import {
   Tooltip as RTooltip,
   ResponsiveContainer,
 } from "recharts";
-import type { MachineDetail, TelemetryPoint } from "../types";
+import type { MachineDetail, TelemetryPoint, ErrorLog } from "../types";
 import {
   CNC_STATUS_COLOR,
   TOOL_LIFE_WARNING,
   TOOL_LIFE_DANGER,
 } from "../constants";
+import { resetMachineAlarm } from "../../../services/dashboardService";
 
 const { Text, Title } = Typography;
 
@@ -108,7 +117,9 @@ interface MachineDetailDrawerProps {
   detail: MachineDetail | null;
   telemetryData: TelemetryPoint[];
   latestTelemetry: TelemetryPoint | null;
+  errorLogs?: ErrorLog[];
   onClose: () => void;
+  onResetAlarm?: (machineId: string) => void;
 }
 
 const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
@@ -116,8 +127,12 @@ const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
   detail,
   telemetryData,
   latestTelemetry,
+  errorLogs = [],
   onClose,
+  onResetAlarm,
 }) => {
+  const [resetting, setResetting] = useState(false);
+
   if (!detail) return null;
 
   const { production, activeTool, override } = detail;
@@ -474,6 +489,138 @@ const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
             </Card>
           </Col>
         </Row>
+
+        {/* ===== ERROR LOGS & DIAGNOSTICS ===== */}
+        <Card
+          size="small"
+          title={
+            <span>
+              <WarningOutlined style={{ marginRight: 6, color: "#faad14" }} />
+              Alerts & Error Logs
+            </span>
+          }
+          bordered={false}
+          style={{ borderRadius: 12, marginTop: 16 }}
+          extra={
+            errorLogs.some((e) => e.status === "Active") && onResetAlarm ? (
+              <Button
+                type="primary"
+                danger
+                size="small"
+                icon={<ReloadOutlined />}
+                loading={resetting}
+                onClick={async () => {
+                  setResetting(true);
+                  try {
+                    await onResetAlarm(detail.machineId);
+                    message.success(`Alarms reset for ${detail.machineId}`);
+                  } catch {
+                    message.error("Failed to reset alarms.");
+                  } finally {
+                    setResetting(false);
+                  }
+                }}
+              >
+                Reset All Alarms
+              </Button>
+            ) : null
+          }
+        >
+          {errorLogs.length === 0 ? (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="No error logs recorded"
+              style={{ padding: "16px 0" }}
+            />
+          ) : (
+            <Table
+              dataSource={errorLogs}
+              rowKey="key"
+              size="small"
+              pagination={false}
+              scroll={{ y: 180 }}
+              columns={[
+                {
+                  title: "Time",
+                  dataIndex: "timestamp",
+                  key: "timestamp",
+                  width: 80,
+                  render: (t: string) => <Text style={{ fontSize: 12 }}>{t}</Text>,
+                },
+                {
+                  title: "Code",
+                  dataIndex: "errorCode",
+                  key: "errorCode",
+                  width: 90,
+                  render: (code: string) => (
+                    <Tag style={{ fontFamily: "monospace", fontSize: 11 }}>
+                      {code}
+                    </Tag>
+                  ),
+                },
+                {
+                  title: "Message",
+                  dataIndex: "message",
+                  key: "message",
+                  ellipsis: true,
+                  render: (msg: string) => (
+                    <Tooltip title={msg}>
+                      <Text style={{ fontSize: 12 }}>{msg}</Text>
+                    </Tooltip>
+                  ),
+                },
+                {
+                  title: "Severity",
+                  dataIndex: "severity",
+                  key: "severity",
+                  width: 90,
+                  render: (sev: string) => {
+                    const colorMap: Record<string, string> = {
+                      Critical: "red",
+                      Warning: "orange",
+                      Info: "blue",
+                    };
+                    const iconMap: Record<string, React.ReactNode> = {
+                      Critical: <ExclamationCircleOutlined />,
+                      Warning: <WarningOutlined />,
+                      Info: <CheckCircleOutlined />,
+                    };
+                    return (
+                      <Tag
+                        color={colorMap[sev] || "default"}
+                        icon={iconMap[sev]}
+                        style={{ fontSize: 11 }}
+                      >
+                        {sev}
+                      </Tag>
+                    );
+                  },
+                },
+                {
+                  title: "Status",
+                  dataIndex: "status",
+                  key: "status",
+                  width: 80,
+                  render: (status: string) => (
+                    <Badge
+                      status={status === "Active" ? "error" : "success"}
+                      text={
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: status === "Active" ? "#ff4d4f" : "#52c41a",
+                          }}
+                        >
+                          {status}
+                        </Text>
+                      }
+                    />
+                  ),
+                },
+              ]}
+            />
+          )}
+        </Card>
       </div>
     </Drawer>
   );

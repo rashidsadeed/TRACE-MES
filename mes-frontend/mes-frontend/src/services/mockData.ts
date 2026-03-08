@@ -153,6 +153,40 @@ export const MOCK_TELEMETRY_BASE: Record<string, { rpm: number; load: number; te
   "Paint-Booth-2": { rpm: 0, load: 0, temp: 22.0, vibration: 0.00, coolant: 0 },
 };
 
+// --- Machine Error Logs ---
+
+export type ErrorSeverity = "Critical" | "Warning" | "Info";
+export type ErrorLogStatus = "Active" | "Resolved";
+
+export interface MockErrorLog {
+  key: string;
+  timestamp: string;
+  errorCode: string;
+  message: string;
+  severity: ErrorSeverity;
+  status: ErrorLogStatus;
+}
+
+export const MOCK_ERROR_LOGS: Record<string, MockErrorLog[]> = {
+  "CNC-001": [
+    { key: "e1", timestamp: "14:32:10", errorCode: "E-1001", message: "Spindle overload detected — feed rate reduced automatically.", severity: "Warning", status: "Resolved" },
+    { key: "e2", timestamp: "15:10:45", errorCode: "E-2003", message: "Coolant pressure below threshold (< 2 bar).", severity: "Info", status: "Resolved" },
+  ],
+  "CNC-002": [],
+  "Press-A1": [
+    { key: "e3", timestamp: "09:15:22", errorCode: "E-4010", message: "Hydraulic pressure sensor failure — machine halted.", severity: "Critical", status: "Active" },
+    { key: "e4", timestamp: "09:15:23", errorCode: "E-4011", message: "Emergency stop triggered by operator.", severity: "Critical", status: "Active" },
+    { key: "e5", timestamp: "08:42:05", errorCode: "E-3005", message: "Die temperature exceeded 90°C limit.", severity: "Warning", status: "Resolved" },
+  ],
+  "Assembly-Line-4": [
+    { key: "e6", timestamp: "11:05:33", errorCode: "E-5001", message: "Torque driver calibration drift detected (+2.1%).", severity: "Info", status: "Resolved" },
+  ],
+  "Paint-Booth-2": [
+    { key: "e7", timestamp: "07:30:00", errorCode: "E-6001", message: "Scheduled maintenance — spray nozzle replacement due.", severity: "Info", status: "Active" },
+    { key: "e8", timestamp: "06:55:12", errorCode: "E-6010", message: "Air compressor pressure drop below operating range.", severity: "Warning", status: "Active" },
+  ],
+};
+
 // ============================================================
 // Production
 // ============================================================
