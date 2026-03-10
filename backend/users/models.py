@@ -90,8 +90,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 class UserSession(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='sessions')
-    #TODO: ADD TOKEN TO DB SCHEMA AND DIAGRAM
-    token = models.CharField(max_length=255, unique=True) # Store JWT or session token 
+    token = models.CharField(max_length=255, unique=True)  # SHA-256 hash of the JWT access token
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     is_switch_user = models.BooleanField(default=False) # Indicates if this session is a result of a user switch
