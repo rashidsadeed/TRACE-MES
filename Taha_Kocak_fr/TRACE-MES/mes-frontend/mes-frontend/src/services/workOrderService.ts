@@ -42,7 +42,29 @@ export const getWorkOrders = async (): Promise<MockWorkOrder[] | BackendWorkOrde
     return structuredClone(MOCK_WORK_ORDERS);
   }
   const { data } = await apiClient.get<BackendWorkOrder[]>("/workorders/");
-  return data;
+  
+  return data.map((wo) => {
+    let prioStr: MockWorkOrder["priority"] = "Normal";
+    if (wo.priority === 1) prioStr = "High";
+    if (wo.priority === 3) prioStr = "Low";
+
+    let statStr: MockWorkOrder["status"] = "Pending";
+    if (wo.status === "IN_PROGRESS") statStr = "In Progress";
+    if (wo.status === "COMPLETED") statStr = "Completed";
+    if (wo.status === "CANCELLED") statStr = "Delayed";
+
+    return {
+      key: wo.id,
+      id: wo.code || wo.id.substring(0, 8),
+      product: wo.part?.name || wo.description || "Unknown",
+      quantity: wo.target_qty,
+      completed: 0, 
+      priority: prioStr,
+      status: statStr,
+      dueDate: wo.created_at ? wo.created_at.split("T")[0] : "",
+      assignmentType: "machine" as const,
+    };
+  });
 };
 
 export const getOrderRequests = async (): Promise<MockOrderRequest[]> => {
