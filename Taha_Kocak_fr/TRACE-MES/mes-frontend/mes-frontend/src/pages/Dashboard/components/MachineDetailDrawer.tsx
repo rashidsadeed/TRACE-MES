@@ -41,6 +41,7 @@ import {
   CartesianGrid,
   Tooltip as RTooltip,
   ResponsiveContainer,
+  ReferenceLine,
 } from "recharts";
 import type { MachineDetail, TelemetryPoint, ErrorLog } from "../types";
 import {
@@ -176,7 +177,7 @@ const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
       >
         <Space size="middle" align="center">
           <Title level={4} style={{ margin: 0 }}>
-            {detail.machineId}
+            {detail.machineName || detail.machineId}
           </Title>
           <Tag
             color={CNC_STATUS_COLOR[detail.status]}
@@ -347,11 +348,12 @@ const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
                     title={
                       <span>
                         <DashboardOutlined style={{ marginRight: 4 }} />
-                        Feed Override
+                        Feed Rate
                       </span>
                     }
                     value={override.feed}
-                    suffix="%"
+                    precision={1}
+                    suffix="mm/min"
                     valueStyle={{ fontSize: 18 }}
                   />
                 </Col>
@@ -370,9 +372,10 @@ const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
                   </Col>
                   <Col span={12}>
                     <Statistic
-                      title="Spindle Override"
+                      title="Spindle Speed"
                       value={override.spindle}
-                      suffix="%"
+                      precision={0}
+                      suffix="RPM"
                       valueStyle={{ fontSize: 18 }}
                     />
                   </Col>
@@ -432,11 +435,12 @@ const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
                     tick={{ fontSize: 10, fill: "#bbb" }}
                     interval="preserveStartEnd"
                   />
-                  <YAxis tick={{ fontSize: 10, fill: "#bbb" }} domain={["auto", "auto"]} />
+                  <YAxis tick={{ fontSize: 10, fill: "#bbb" }} domain={[20, (dataMax: number) => Math.max(100, dataMax)]} />
                   <RTooltip
                     contentStyle={{ fontSize: 12, borderRadius: 8 }}
                     formatter={(val: number | undefined) => [`${val ?? 0} °C`, "Temp"]}
                   />
+                  <ReferenceLine y={80} stroke="#ff4d4f" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'High Temp', fill: '#ff4d4f', fontSize: 10 }} />
                   <Area
                     type="monotone"
                     dataKey="tempC"
@@ -471,11 +475,12 @@ const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
                     tick={{ fontSize: 10, fill: "#bbb" }}
                     interval="preserveStartEnd"
                   />
-                  <YAxis tick={{ fontSize: 10, fill: "#bbb" }} domain={["auto", "auto"]} />
+                  <YAxis tick={{ fontSize: 10, fill: "#bbb" }} domain={[0, (dataMax: number) => Math.max(1.0, dataMax)]} />
                   <RTooltip
                     contentStyle={{ fontSize: 12, borderRadius: 8 }}
                     formatter={(val: number | undefined) => [`${val ?? 0} m/s²`, "Vibration"]}
                   />
+                  <ReferenceLine y={0.5} stroke="#ff4d4f" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'High Vib', fill: '#ff4d4f', fontSize: 10 }} />
                   <Line
                     type="monotone"
                     dataKey="vibration"
@@ -544,29 +549,33 @@ const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
                   title: "Time",
                   dataIndex: "timestamp",
                   key: "timestamp",
-                  width: 80,
+                  width: 90,
                   render: (t: string) => <Text style={{ fontSize: 12 }}>{t}</Text>,
                 },
                 {
                   title: "Code",
                   dataIndex: "errorCode",
                   key: "errorCode",
-                  width: 90,
+                  width: 140,
                   render: (code: string) => (
-                    <Tag style={{ fontFamily: "monospace", fontSize: 11 }}>
-                      {code}
-                    </Tag>
+                    <Tooltip title={code}>
+                      <Tag style={{ fontFamily: "monospace", fontSize: 11, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", verticalAlign: "bottom" }}>
+                        {code}
+                      </Tag>
+                    </Tooltip>
                   ),
                 },
                 {
                   title: "Message",
                   dataIndex: "message",
                   key: "message",
-                  ellipsis: true,
                   render: (msg: string) => (
-                    <Tooltip title={msg}>
-                      <Text style={{ fontSize: 12 }}>{msg}</Text>
-                    </Tooltip>
+                    <Text
+                      style={{ fontSize: 12, width: 250, display: "block" }}
+                      ellipsis={{ tooltip: msg }}
+                    >
+                      {msg}
+                    </Text>
                   ),
                 },
                 {

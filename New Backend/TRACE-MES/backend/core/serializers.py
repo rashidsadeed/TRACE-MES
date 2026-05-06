@@ -100,14 +100,21 @@ class WorkOrderExecutionSerializer(serializers.ModelSerializer):
     """Read serializer for execution records."""
     work_order = serializers.UUIDField(source="work_order_id", read_only=True)
     work_order_code = serializers.CharField(source="work_order.code", read_only=True)
+    part_name = serializers.CharField(source="work_order.part.name", read_only=True)
+    target_qty = serializers.IntegerField(source="work_order.target_qty", read_only=True)
+    actual_qty = serializers.SerializerMethodField()
     machine = MachineSerializer(read_only=True)
     operator = _UserMiniSerializer(read_only=True)
+
+    def get_actual_qty(self, obj):
+        # Calculate sum of good_qty from all related production logs
+        return sum(log.good_qty for log in obj.production_logs.all())
 
     class Meta:
         model = WorkOrderExecution
         fields = [
-            "id", "work_order", "work_order_code", "machine", "operator",
-            "status", "started_at", "paused_at", "completed_at",
+            "id", "work_order", "work_order_code", "part_name", "machine", "operator",
+            "status", "target_qty", "actual_qty", "started_at", "paused_at", "completed_at",
         ]
         read_only_fields = fields
 

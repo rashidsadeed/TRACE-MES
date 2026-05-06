@@ -1,5 +1,7 @@
 import type { Dayjs } from "dayjs";
 
+export type Priority = "High" | "Normal" | "Low";
+
 // --- Machine ---
 
 export type MachineType =
@@ -54,6 +56,8 @@ export interface ProductionJob {
   lineId?: string;                 // Set when assigned to a line (existing or custom)
   assignedMachineIds?: string[];   // Set when assigned directly to machine(s)
   status: JobStatus;
+  priority?: Priority;
+  dueDate?: string;
   targetQty: number;
   actualQty: number;
   startTime: string;
@@ -87,6 +91,8 @@ export interface StartJobFormValues {
   customMachineIds?: string[];
   productName: string;
   targetQty: number;
+  priority: Priority;
+  dueDate: Dayjs;
 }
 
 export interface AcceptOrderFormValues {

@@ -44,6 +44,7 @@ export type CNCStatus = "RUNNING" | "IDLE" | "ALARM" | "MAINTENANCE" | "SETUP";
 
 export interface MachineDetail {
   machineId: string;
+  machineName?: string;
   factorySection: string;
   status: CNCStatus;
   production: {

@@ -1,4 +1,5 @@
 import React from "react";
+import dayjs from "dayjs";
 import {
   PlayCircleOutlined,
   PauseCircleOutlined,
@@ -266,7 +267,7 @@ export const INITIAL_PENDING_ORDERS: PendingOrder[] = [
     product: "Battery Casing Model Y",
     quantity: 5000,
     priority: "High",
-    dueDate: "2024-04-01",
+    dueDate: dayjs().add(5, "day").format("YYYY-MM-DD"),
   },
   {
     key: "po2",
@@ -275,7 +276,7 @@ export const INITIAL_PENDING_ORDERS: PendingOrder[] = [
     product: "Sensor Housing V3",
     quantity: 3000,
     priority: "Normal",
-    dueDate: "2024-04-10",
+    dueDate: dayjs().add(14, "day").format("YYYY-MM-DD"),
   },
   {
     key: "po3",
@@ -284,7 +285,7 @@ export const INITIAL_PENDING_ORDERS: PendingOrder[] = [
     product: "OLED Frame 55\"",
     quantity: 800,
     priority: "Low",
-    dueDate: "2024-05-01",
+    dueDate: dayjs().add(30, "day").format("YYYY-MM-DD"),
   },
 ];
 

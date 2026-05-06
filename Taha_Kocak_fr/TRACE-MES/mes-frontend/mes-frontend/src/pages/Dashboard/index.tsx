@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Row, Col, Typography } from "antd";
-import { KPICard, MachineTable, MachineDetailDrawer } from "./components";
+import { KPICard, MachineTable, MachineDetailDrawer, AlertMachinesModal } from "./components";
 import { useLiveTelemetry } from "./hooks/useLiveTelemetry";
 import { styles } from "./styles";
 import { getKPIs, getMachineLogs, getMachineDetail, getMachineErrorLogs, resetMachineAlarm } from "../../services/dashboardService";
@@ -28,8 +28,18 @@ const Dashboard: React.FC = () => {
   const [machineLogData, setMachineLogData] = useState<MachineLog[]>([]);
   const [detail, setDetail] = useState<MachineDetail | null>(null);
   const [errorLogs, setErrorLogs] = useState<ErrorLog[]>([]);
+  const [alertsModalOpen, setAlertsModalOpen] = useState(false);
 
   const { data: telemetryData, latest: latestTelemetry } = useLiveTelemetry(selectedMachine);
+
+  // Machines in Error or Maintenance state — drive the Alerts KPI drill-down.
+  const alertMachines = useMemo(
+    () =>
+      machineLogData.filter(
+        (m) => m.status === "Error" || m.status === "Maintenance",
+      ),
+    [machineLogData],
+  );
 
   // Fetch initial data from service
   useEffect(() => {
@@ -91,11 +101,18 @@ const Dashboard: React.FC = () => {
 
       {/* KPI Cards */}
       <Row gutter={[24, 24]}>
-        {kpiData.map((kpi) => (
-          <Col xs={24} sm={12} lg={6} key={kpi.key}>
-            <KPICard data={kpi} />
-          </Col>
-        ))}
+        {kpiData.map((kpi) => {
+          const isAlerts = kpi.key === "alerts";
+          return (
+            <Col xs={24} sm={12} lg={6} key={kpi.key}>
+              <KPICard
+                data={kpi}
+                onClick={isAlerts ? () => setAlertsModalOpen(true) : undefined}
+                highlight={isAlerts && alertMachines.length > 0}
+              />
+            </Col>
+          );
+        })}
       </Row>
 
       {/* Machine Logs */}
@@ -114,6 +131,14 @@ const Dashboard: React.FC = () => {
         errorLogs={errorLogs}
         onClose={handleCloseDrawer}
         onResetAlarm={handleResetAlarm}
+      />
+
+      {/* Alerts Drill-down Modal */}
+      <AlertMachinesModal
+        open={alertsModalOpen}
+        machines={alertMachines}
+        onClose={() => setAlertsModalOpen(false)}
+        onViewDetail={handleViewDetail}
       />
     </div>
   );

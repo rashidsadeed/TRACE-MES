@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
   Button,
   Space,
@@ -27,6 +27,7 @@ import {
   PendingOrdersModal,
   NavbarPortal,
   EmergencyStopBar,
+  ErrorMachinesModal,
 } from "./components";
 import { styles } from "./styles";
 
@@ -58,7 +59,20 @@ const Production: React.FC = () => {
     hasRunningJobs,
     handleStopAll,
     handleStopJob,
+    // Machine Conflict
+    conflictMachines,
+    conflictAcknowledged,
+    setConflictAcknowledged,
+    checkMachineConflicts,
+    isConflictBlocked,
   } = useProduction();
+
+  const [errorModalOpen, setErrorModalOpen] = useState(false);
+
+  const erroredMachines = useMemo(
+    () => machines.filter((m) => m.status === "Error"),
+    [machines],
+  );
 
   const tabItems = [
     {
@@ -172,9 +186,28 @@ const Production: React.FC = () => {
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card bordered={false} size="small">
+          <Card
+            bordered={false}
+            size="small"
+            hoverable={stats.machines.error > 0}
+            onClick={
+              stats.machines.error > 0
+                ? () => setErrorModalOpen(true)
+                : undefined
+            }
+            style={{
+              cursor: stats.machines.error > 0 ? "pointer" : undefined,
+              border:
+                stats.machines.error > 0 ? "1px solid #ffa39e" : undefined,
+              background: stats.machines.error > 0 ? "#fff1f0" : undefined,
+            }}
+          >
             <Statistic
-              title="Machine Errors"
+              title={
+                stats.machines.error > 0
+                  ? "Machine Errors (click for details)"
+                  : "Machine Errors"
+              }
               value={stats.machines.error}
               valueStyle={
                 stats.machines.error > 0 ? { color: "#ff4d4f" } : undefined
@@ -198,6 +231,11 @@ const Production: React.FC = () => {
         availableMachines={availableMachines}
         onFinish={handleCreateJob}
         onCancel={closeModal}
+        conflictMachines={conflictMachines}
+        conflictAcknowledged={conflictAcknowledged}
+        onConflictAcknowledge={setConflictAcknowledged}
+        onAssignmentChange={checkMachineConflicts}
+        isSubmitBlocked={isConflictBlocked}
       />
 
       {/* Modal: Pending Orders List */}
@@ -217,6 +255,18 @@ const Production: React.FC = () => {
         availableMachines={availableMachines}
         onFinish={handleAcceptOrder}
         onCancel={closeModal}
+        conflictMachines={conflictMachines}
+        conflictAcknowledged={conflictAcknowledged}
+        onConflictAcknowledge={setConflictAcknowledged}
+        onAssignmentChange={checkMachineConflicts}
+        isSubmitBlocked={isConflictBlocked}
+      />
+
+      {/* Modal: Error Machines Drill-down */}
+      <ErrorMachinesModal
+        open={errorModalOpen}
+        machines={erroredMachines}
+        onClose={() => setErrorModalOpen(false)}
       />
     </div>
   );

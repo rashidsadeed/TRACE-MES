@@ -189,6 +189,7 @@ export const getMachineDetail = async (machineId: string): Promise<MockMachineDe
 
     return {
       machineId,
+      machineName: machine?.name ?? machineId,
       factorySection: machine ? `${machine.type}-Dept` : "—",
       status: _toCNCStatus(machine?.status ?? "IDLE"),
       production: {

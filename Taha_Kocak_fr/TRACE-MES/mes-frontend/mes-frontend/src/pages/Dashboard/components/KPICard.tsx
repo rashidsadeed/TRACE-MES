@@ -6,14 +6,27 @@ import { styles, getTrendColor } from "../styles";
 
 interface KPICardProps {
   data: KPIData;
+  onClick?: () => void;
+  highlight?: boolean;
 }
 
-const KPICard: React.FC<KPICardProps> = React.memo(({ data }) => {
+const KPICard: React.FC<KPICardProps> = React.memo(({ data, onClick, highlight }) => {
   const trendColor = getTrendColor(data.trend);
   const TrendIcon = data.trend === "up" ? ArrowUpOutlined : ArrowDownOutlined;
+  const clickable = Boolean(onClick);
 
   return (
-    <Card bordered={false} hoverable style={{ height: "100%" }}>
+    <Card
+      bordered={false}
+      hoverable
+      onClick={onClick}
+      style={{
+        height: "100%",
+        cursor: clickable ? "pointer" : undefined,
+        border: highlight ? "1px solid #ffa39e" : undefined,
+        background: highlight ? "#fff1f0" : undefined,
+      }}
+    >
       <div style={styles.kpiCardBody}>
         <Statistic
           title={data.title}
@@ -26,7 +39,9 @@ const KPICard: React.FC<KPICardProps> = React.memo(({ data }) => {
         <span style={{ color: trendColor, marginRight: 8 }}>
           <TrendIcon /> {data.percent}%
         </span>
-        <span style={styles.kpiTrendLabel}>vs last week</span>
+        <span style={styles.kpiTrendLabel}>
+          {clickable ? "Click for details" : "vs last week"}
+        </span>
       </div>
     </Card>
   );

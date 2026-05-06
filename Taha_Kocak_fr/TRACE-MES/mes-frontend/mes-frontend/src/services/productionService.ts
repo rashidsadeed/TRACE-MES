@@ -38,6 +38,10 @@ interface BackendExecution {
   started_at: string;
   paused_at: string | null;
   completed_at: string | null;
+  work_order_code?: string;
+  part_name?: string;
+  target_qty?: number;
+  actual_qty?: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -83,15 +87,15 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
   const { data } = await apiClient.get<BackendExecution[]>("/executions/");
   return data.map((e) => ({
     key: e.id,
-    id: e.id,
-    productName: e.work_order,
+    id: e.work_order_code || e.id.substring(0, 8).toUpperCase(),
+    productName: e.part_name || "Unknown Product",
     assignmentType: "machine" as const,
     assignedMachineIds: [e.machine?.id ?? ""],
     status: e.status === "RUNNING" ? "Running"
       : e.status === "PAUSED" ? "Paused"
       : "Completed",
-    targetQty: 0,
-    actualQty: 0,
+    targetQty: e.target_qty || 0,
+    actualQty: e.actual_qty || 0,
     startTime: e.started_at,
     currentStageIndex: 0,
     stages: [],

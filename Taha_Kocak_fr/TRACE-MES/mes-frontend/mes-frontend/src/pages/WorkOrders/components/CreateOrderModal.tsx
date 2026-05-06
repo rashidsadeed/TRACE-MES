@@ -4,6 +4,7 @@ import {
 } from "antd";
 import type { FormInstance } from "antd";
 import type { Dayjs } from "dayjs";
+import dayjs from "dayjs";
 import type {
   WorkOrder, CreateOrderFormValues, AssignmentType, LineInfo, MachineInfo,
 } from "../types";
@@ -88,7 +89,11 @@ const CreateOrderModal: React.FC<CreateOrderModalProps> = ({
         label="Due Date"
         rules={[{ required: true, message: "Due date is required" }]}
       >
-        <DatePicker style={{ width: "100%" }} onChange={onDateChange} />
+        <DatePicker 
+          style={{ width: "100%" }} 
+          onChange={onDateChange} 
+          disabledDate={(current) => current && current < dayjs().startOf('day')}
+        />
       </Form.Item>
 
       <ConflictAlert

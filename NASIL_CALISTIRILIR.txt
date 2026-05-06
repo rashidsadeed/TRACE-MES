@@ -1,0 +1,107 @@
+============================================================
+  TRACE-MES - Calistirma Kilavuzu
+============================================================
+
+GEREKSINIMLER:
+  - Docker Desktop (kurulu ve acik olmali)
+  - Node.js (v18+)
+  - Git Bash veya terminal
+
+============================================================
+1. BACKEND BASLATMA (Docker)
+============================================================
+
+Terminal ac, backend klasorune git:
+
+  cd "C:/Users/Taha/Projects/TRACE-MES/New Backend/TRACE-MES"
+
+Docker container'lari baslat:
+
+  docker compose up -d
+
+Kontrol et (3 container: web, db, redis gorunmeli):
+
+  docker compose ps
+
+API testi (401 donmesi = calisiyor demek):
+
+  curl http://localhost:8000/api/live/overview/
+
+============================================================
+2. TELEMETRI SIMULASYONU (Opsiyonel)
+============================================================
+
+Makinelere canli veri akisi baslatmak icin (her biri ayri terminalde
+veya -d ile arka planda):
+
+  docker compose exec -d web python manage.py simulate_telemetry --machine cnc-001 --interval 2
+  docker compose exec -d web python manage.py simulate_telemetry --machine cnc-002 --interval 2
+  docker compose exec -d web python manage.py simulate_telemetry --machine press-001 --interval 2
+  docker compose exec -d web python manage.py simulate_telemetry --machine solder-001 --interval 3
+  docker compose exec -d web python manage.py simulate_telemetry --machine test-001 --interval 3
+
+Veritabanini sifirdan doldurmak istersen:
+
+  docker compose exec web python manage.py seed_factory
+
+============================================================
+3. FRONTEND BASLATMA
+============================================================
+
+Yeni terminal ac, frontend klasorune git:
+
+  cd "C:/Users/Taha/Projects/TRACE-MES/Taha_Kocak_fr/TRACE-MES/mes-frontend/mes-frontend"
+
+Bagimliliklari kur (ilk seferde veya package.json degistiginde):
+
+  npm install
+
+Gelistirme sunucusunu baslat:
+
+  npx vite --host
+
+Cikti soyle gorunecek:
+
+  VITE v6.4.1  ready in 220 ms
+    Local:   http://localhost:5173/
+    Network: http://172.20.10.3:5173/
+
+============================================================
+4. GIRIS BILGILERI
+============================================================
+
+  Kullanici adi:  admin
+  Sifre:          admin123
+
+  PC'den:         http://localhost:5173
+  Telefondan:     http://<bilgisayarin-ip>:5173
+                  (ayni Wi-Fi aginda olmali)
+
+============================================================
+5. KAPATMA
+============================================================
+
+Frontend (Vite):
+  Terminal'de Ctrl+C bas
+
+Backend (Docker):
+  cd "C:/Users/Taha/Projects/TRACE-MES/New Backend/TRACE-MES"
+  docker compose down
+
+============================================================
+6. FAYDALI KOMUTLAR
+============================================================
+
+Backend loglarini gor:
+  docker compose logs -f web
+
+Migration uygula:
+  docker compose exec web python manage.py migrate
+
+Django shell:
+  docker compose exec web python manage.py shell
+
+Yeni kullanici olustur:
+  docker compose exec web python manage.py createsuperuser
+
+============================================================

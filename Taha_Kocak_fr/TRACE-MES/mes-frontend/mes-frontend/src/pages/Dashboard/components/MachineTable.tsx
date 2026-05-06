@@ -49,7 +49,7 @@ const MachineTable: React.FC<MachineTableProps> = React.memo(({ data, onViewDeta
               strokeColor={getTempColor(temp, TEMP_DANGER_THRESHOLD)}
               showInfo={false}
             />
-            <span style={styles.tempLabel}>{temp}°C</span>
+            <span style={styles.tempLabel}>{temp.toFixed(1)}°C</span>
           </div>
         ),
       },

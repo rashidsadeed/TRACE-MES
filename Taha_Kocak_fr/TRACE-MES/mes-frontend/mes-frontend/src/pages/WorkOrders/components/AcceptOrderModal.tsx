@@ -4,6 +4,7 @@ import {
 } from "antd";
 import type { FormInstance } from "antd";
 import type { Dayjs } from "dayjs";
+import dayjs from "dayjs";
 import type {
   WorkOrder, OrderRequest, AcceptOrderFormValues,
   AssignmentType, LineInfo, MachineInfo,
@@ -64,13 +65,27 @@ const AcceptOrderModal: React.FC<AcceptOrderModalProps> = ({
     )}
 
     <Form form={form} layout="vertical" onFinish={onFinish}>
-      {/* Hidden fields to carry data */}
-      <Form.Item name="product" hidden>
-        <Input />
-      </Form.Item>
-      <Form.Item name="quantity" hidden>
-        <InputNumber />
-      </Form.Item>
+      {/* Product and Quantity — editable so planner can revise */}
+      <Row gutter={16}>
+        <Col span={12}>
+          <Form.Item
+            name="product"
+            label="Product Name"
+            rules={[{ required: true, message: "Product name is required" }]}
+          >
+            <Input />
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item
+            name="quantity"
+            label="Quantity"
+            rules={[{ required: true, message: "Quantity is required" }]}
+          >
+            <InputNumber style={{ width: "100%" }} min={1} />
+          </Form.Item>
+        </Col>
+      </Row>
 
       <Row gutter={16}>
         <Col span={12}>
@@ -88,7 +103,11 @@ const AcceptOrderModal: React.FC<AcceptOrderModalProps> = ({
             label="Confirm Due Date"
             rules={[{ required: true, message: "Due date is required" }]}
           >
-            <DatePicker style={{ width: "100%" }} onChange={onDateChange} />
+            <DatePicker 
+              style={{ width: "100%" }} 
+              onChange={onDateChange} 
+              disabledDate={(current) => current && current < dayjs().startOf('day')}
+            />
           </Form.Item>
         </Col>
       </Row>

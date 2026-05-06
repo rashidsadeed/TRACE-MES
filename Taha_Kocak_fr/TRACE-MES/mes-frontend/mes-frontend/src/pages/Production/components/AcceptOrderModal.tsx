@@ -9,6 +9,7 @@ import type {
   Machine,
 } from "../types";
 import AssignmentFields from "./AssignmentFields";
+import MachineConflictAlert from "./MachineConflictAlert";
 import { styles } from "../styles";
 
 const { Text } = Typography;
@@ -27,6 +28,12 @@ interface AcceptOrderModalProps {
   availableMachines: Machine[];
   onFinish: (values: AcceptOrderFormValues) => void;
   onCancel: () => void;
+  // Conflict
+  conflictMachines: Machine[];
+  conflictAcknowledged: boolean;
+  onConflictAcknowledge: (checked: boolean) => void;
+  onAssignmentChange: (assignmentType: string, values: Record<string, unknown>) => void;
+  isSubmitBlocked: boolean;
 }
 
 const AcceptOrderModal: React.FC<AcceptOrderModalProps> = ({
@@ -37,10 +44,26 @@ const AcceptOrderModal: React.FC<AcceptOrderModalProps> = ({
   availableMachines,
   onFinish,
   onCancel,
+  conflictMachines,
+  conflictAcknowledged,
+  onConflictAcknowledge,
+  onAssignmentChange,
+  isSubmitBlocked,
 }) => {
   const assignmentType = Form.useWatch("assignmentType", form) as
     | AssignmentType
     | undefined;
+
+  // Watch assignment-related fields for conflict checking
+  const lineId = Form.useWatch("lineId", form);
+  const machineIds = Form.useWatch("machineIds", form);
+  const customMachineIds = Form.useWatch("customMachineIds", form);
+
+  React.useEffect(() => {
+    if (assignmentType) {
+      onAssignmentChange(assignmentType, { lineId, machineIds, customMachineIds });
+    }
+  }, [assignmentType, lineId, machineIds, customMachineIds, onAssignmentChange]);
 
   return (
     <Modal
@@ -77,10 +100,16 @@ const AcceptOrderModal: React.FC<AcceptOrderModalProps> = ({
           availableMachines={availableMachines}
         />
 
+        <MachineConflictAlert
+          conflictMachines={conflictMachines}
+          acknowledged={conflictAcknowledged}
+          onAcknowledge={onConflictAcknowledge}
+        />
+
         <Form.Item style={styles.formSubmit}>
           <Space>
             <Button onClick={onCancel}>Cancel</Button>
-            <Button type="primary" htmlType="submit">
+            <Button type="primary" htmlType="submit" disabled={isSubmitBlocked}>
               Confirm & Schedule
             </Button>
           </Space>

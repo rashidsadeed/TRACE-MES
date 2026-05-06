@@ -90,7 +90,7 @@ apiClient.interceptors.response.use(
       try {
         const { data } = await axios.post(`${API_BASE_URL}/auth/refresh/`, {
           refresh: refreshToken,
-        });
+        }, { headers: { "Content-Type": "application/json" } });
         const newAccessToken = data.access;
         localStorage.setItem("access_token", newAccessToken);
         processQueue(null, newAccessToken);

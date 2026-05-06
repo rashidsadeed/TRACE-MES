@@ -8,3 +8,5 @@ export { default as ProductVisualizer } from "./ProductVisualizer";
 export { default as AssignmentFields } from "./AssignmentFields";
 export { default as NavbarPortal } from "./NavbarPortal";
 export { default as EmergencyStopBar } from "./EmergencyStopBar";
+export { default as ErrorMachinesModal } from "./ErrorMachinesModal";
+export { default as MachineConflictAlert } from "./MachineConflictAlert";

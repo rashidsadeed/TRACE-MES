@@ -53,6 +53,38 @@ export const useProduction = () => {
   const [startJobForm] = Form.useForm<StartJobFormValues>();
   const [acceptOrderForm] = Form.useForm<AcceptOrderFormValues>();
 
+  // --- Machine Conflict State ---
+  const [conflictMachines, setConflictMachines] = useState<Machine[]>([]);
+  const [conflictAcknowledged, setConflictAcknowledged] = useState(false);
+  const isConflictBlocked = conflictMachines.length > 0 && !conflictAcknowledged;
+
+  const checkMachineConflicts = useCallback(
+    (assignmentType: string, values: { lineId?: string; machineIds?: string[]; customMachineIds?: string[] }) => {
+      setConflictAcknowledged(false);
+      let idsToCheck: string[] = [];
+
+      if (assignmentType === "machine" && values.machineIds?.length) {
+        idsToCheck = values.machineIds;
+      } else if (assignmentType === "custom-line" && values.customMachineIds?.length) {
+        idsToCheck = values.customMachineIds;
+      } else if ((assignmentType === "existing-line") && values.lineId) {
+        const line = lines.find((l) => l.id === values.lineId);
+        idsToCheck = line ? line.machineIds : [];
+      }
+
+      const busyMachines = machines.filter(
+        (m) => idsToCheck.includes(m.id) && m.status !== "Available",
+      );
+      setConflictMachines(busyMachines);
+    },
+    [machines, lines],
+  );
+
+  const resetConflicts = useCallback(() => {
+    setConflictMachines([]);
+    setConflictAcknowledged(false);
+  }, []);
+
   // --- Derived Data ---
   const availableMachines = useMemo(
     () => machines.filter((m) => m.status === "Available"),
@@ -165,7 +197,8 @@ export const useProduction = () => {
   const openStartJobModal = useCallback(() => {
     setModal({ type: "startJob" });
     startJobForm.resetFields();
-  }, [startJobForm]);
+    resetConflicts();
+  }, [startJobForm, resetConflicts]);
 
   const openPendingOrders = useCallback(() => {
     setModal({ type: "pendingOrders" });
@@ -183,7 +216,8 @@ export const useProduction = () => {
     setModal({ type: "closed" });
     startJobForm.resetFields();
     acceptOrderForm.resetFields();
-  }, [startJobForm, acceptOrderForm]);
+    resetConflicts();
+  }, [startJobForm, acceptOrderForm, resetConflicts]);
 
   // --- Handlers ---
 
@@ -200,6 +234,8 @@ export const useProduction = () => {
         lineId: assignment.lineId,
         assignedMachineIds: assignment.assignedMachineIds,
         status: "Scheduled",
+        priority: values.priority,
+        dueDate: values.dueDate ? values.dueDate.format("YYYY-MM-DD") : undefined,
         targetQty: values.targetQty,
         actualQty: 0,
         startTime: "-",
@@ -441,5 +477,12 @@ export const useProduction = () => {
     hasRunningJobs,
     handleStopAll,
     handleStopJob,
+
+    // Machine Conflict
+    conflictMachines,
+    conflictAcknowledged,
+    setConflictAcknowledged,
+    checkMachineConflicts,
+    isConflictBlocked,
   };
 };
