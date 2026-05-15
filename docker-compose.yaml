@@ -1,5 +1,5 @@
-services: 
-  web:
+services:
+  backend:
     build: ./backend
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
@@ -12,6 +12,20 @@ services:
       - db
       - redis
 
+  frontend:
+    build: ./mes-frontend/mes-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./mes-frontend/mes-frontend:/app
+      - /app/node_modules
+    env_file:
+      - .env
+    environment:
+      - VITE_API_PROXY_TARGET=http://backend:8000
+    depends_on:
+      - backend
+
   db:
     image: postgres:15-alpine
     environment:
@@ -22,11 +36,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-  
+
   redis:
     image: "redis:alpine"
     ports:
       - "6379:6379"
-  
+
 volumes:
   postgres_data:
