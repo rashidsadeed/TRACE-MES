@@ -14,6 +14,7 @@ import MainLayout from "./layouts/MainLayout";
 const Dashboard = React.lazy(() => import("./pages/Dashboard"));
 const ProductionLine = React.lazy(() => import("./pages/Production"));
 const WorkOrders = React.lazy(() => import("./pages/WorkOrders"));
+const LiveMap = React.lazy(() => import("./pages/LiveMap"));
 const LoginPage = React.lazy(() => import("./pages/LoginPage"));
 
 // --- Loading fallback ---
@@ -65,6 +66,7 @@ const App: React.FC = () => {
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="production" element={<ProductionLine />} />
                 <Route path="work-orders" element={<WorkOrders />} />
+                <Route path="live-map" element={<LiveMap />} />
                 <Route
                   path="inventory"
                   element={<Placeholder title="Inventory" />}

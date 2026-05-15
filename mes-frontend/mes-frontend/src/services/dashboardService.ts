@@ -1,12 +1,6 @@
 import { isMockMode } from "./config";
 import apiClient from "./apiClient";
-import {
-  MOCK_KPI_DATA,
-  MOCK_MACHINE_LOGS,
-  MOCK_MACHINE_DETAILS,
-  MOCK_TELEMETRY_BASE,
-  MOCK_ERROR_LOGS,
-} from "./mockData";
+import { simulator } from "./mockSimulator";
 import type { MockKPIData, MockMachineLog, MockMachineDetail, MockErrorLog, CNCStatus } from "./mockData";
 
 /** Simulates network delay for mock mode */
@@ -71,8 +65,8 @@ interface BackendExecution {
 
 export const getKPIs = async (): Promise<MockKPIData[]> => {
   if (isMockMode()) {
-    await delay();
-    return MOCK_KPI_DATA;
+    await delay(100);
+    return simulator.getKPIs();
   }
   // Backend does not have a dedicated KPI endpoint.
   // Derive KPIs from the live overview data.
@@ -108,8 +102,8 @@ export const getKPIs = async (): Promise<MockKPIData[]> => {
 
 export const getMachineLogs = async (): Promise<MockMachineLog[]> => {
   if (isMockMode()) {
-    await delay();
-    return MOCK_MACHINE_LOGS;
+    await delay(100);
+    return simulator.getMachineLogs();
   }
   // Fetch machines + active executions in parallel
   const [overviewRes, executionsRes] = await Promise.all([
@@ -161,8 +155,8 @@ const _toCNCStatus = (backendStatus: string): CNCStatus => {
 
 export const getMachineDetail = async (machineId: string): Promise<MockMachineDetail | null> => {
   if (isMockMode()) {
-    await delay(200);
-    return MOCK_MACHINE_DETAILS[machineId] ?? null;
+    await delay(50);
+    return simulator.getMachineDetail(machineId);
   }
   try {
     // Run all three fetches in parallel for speed
@@ -218,7 +212,9 @@ export const getTelemetryBase = async (
   machineId: string,
 ): Promise<{ rpm: number; load: number; temp: number; vibration: number; coolant: number } | null> => {
   if (isMockMode()) {
-    return MOCK_TELEMETRY_BASE[machineId] ?? null;
+    const profile = simulator.getTelemetryBase(machineId);
+    if (!profile) return null;
+    return { rpm: profile.rpm, load: profile.load, temp: profile.temp, vibration: profile.vibration, coolant: profile.coolant };
   }
   try {
     const { data: packets } = await apiClient.get<BackendTelemetryPacket[]>(
@@ -245,8 +241,8 @@ export const getTelemetryBase = async (
 
 export const getMachineErrorLogs = async (machineId: string): Promise<MockErrorLog[]> => {
   if (isMockMode()) {
-    await delay(200);
-    return MOCK_ERROR_LOGS[machineId] ?? [];
+    await delay(50);
+    return simulator.getErrorLogs(machineId);
   }
   const { data: events } = await apiClient.get<BackendMachineEvent[]>("/live/events/", {
     params: { machine: machineId, limit: 50 },

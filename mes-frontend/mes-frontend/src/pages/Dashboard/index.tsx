@@ -41,7 +41,7 @@ const Dashboard: React.FC = () => {
     [machineLogData],
   );
 
-  // Fetch initial data from service
+  // Fetch data from service — poll every 3s for live updates
   useEffect(() => {
     const fetchData = async () => {
       const [rawKPIs, logs] = await Promise.all([getKPIs(), getMachineLogs()]);
@@ -54,6 +54,8 @@ const Dashboard: React.FC = () => {
       setMachineLogData(logs);
     };
     fetchData();
+    const interval = setInterval(fetchData, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   // Fetch machine detail when selection changes

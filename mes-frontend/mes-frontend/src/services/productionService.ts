@@ -1,9 +1,7 @@
 import { isMockMode } from "./config";
 import apiClient from "./apiClient";
+import { simulator } from "./mockSimulator";
 import {
-  MOCK_MACHINES,
-  MOCK_LINES,
-  MOCK_JOBS,
   MOCK_PENDING_ORDERS,
 } from "./mockData";
 import type {
@@ -50,8 +48,8 @@ interface BackendExecution {
 
 export const getMachines = async (): Promise<MockMachine[]> => {
   if (isMockMode()) {
-    await delay();
-    return structuredClone(MOCK_MACHINES);
+    await delay(100);
+    return simulator.getMachines();
   }
   const { data } = await apiClient.get<BackendMachine[]>("/machines/");
   return data.map((m) => ({
@@ -71,8 +69,8 @@ export const getMachines = async (): Promise<MockMachine[]> => {
 
 export const getLines = async (): Promise<MockProductionLine[]> => {
   if (isMockMode()) {
-    await delay();
-    return structuredClone(MOCK_LINES);
+    await delay(100);
+    return simulator.getLines();
   }
   // Backend does not have production lines. Return empty for real mode.
   return [];
@@ -80,8 +78,8 @@ export const getLines = async (): Promise<MockProductionLine[]> => {
 
 export const getJobs = async (): Promise<MockProductionJob[]> => {
   if (isMockMode()) {
-    await delay();
-    return structuredClone(MOCK_JOBS);
+    await delay(100);
+    return simulator.getJobs();
   }
   // Jobs map to "executions" on the backend
   const { data } = await apiClient.get<BackendExecution[]>("/executions/");

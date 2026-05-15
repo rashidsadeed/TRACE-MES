@@ -1,0 +1,76 @@
+/* ====================================================
+   Live Map — Custom Styles
+   ==================================================== */
+
+/* Error machine node: pulsing red border */
+@keyframes errorPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 4px rgba(255, 77, 79, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(255, 77, 79, 0.6);
+  }
+}
+
+.machine-node-error {
+  animation: errorPulse 1.8s ease-in-out infinite;
+}
+
+/* Pipeline-style edges (override React Flow default) */
+.react-flow__edge-path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Animated edge particles (built-in React Flow animation) */
+.react-flow__edge.animated path {
+  stroke-dasharray: 8;
+  animation: edgeFlow 1s linear infinite;
+}
+
+@keyframes edgeFlow {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+/* Line group labels */
+.line-group-label {
+  position: absolute;
+  font-size: 13px;
+  font-weight: 700;
+  color: #8c8c8c;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* React Flow background dots */
+.react-flow__background {
+  opacity: 0.5;
+}
+
+/* Minimap */
+.react-flow__minimap {
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Attribution hide */
+.react-flow__attribution {
+  display: none !important;
+}
+
+/* Canvas wrapper */
+.live-map-canvas {
+  width: 100%;
+  height: calc(100vh - 200px);
+  min-height: 500px;
+  background: #fafafa;
+  border-radius: 12px;
+  border: 1px solid #f0f0f0;
+  overflow: hidden;
+}

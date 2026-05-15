@@ -12,6 +12,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   LogoutOutlined,
+  RadarChartOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../auth/AuthContext";
 
@@ -36,6 +37,7 @@ const MainLayout: React.FC = () => {
       label: "Productions",
     },
     { key: "/work-orders", icon: <FileTextOutlined />, label: "Work Orders" },
+    { key: "/live-map", icon: <RadarChartOutlined />, label: "Live Map" },
     { key: "/inventory", icon: <InboxOutlined />, label: "Inventory" },
     { key: "/settings", icon: <SettingOutlined />, label: "Settings" },
   ];
