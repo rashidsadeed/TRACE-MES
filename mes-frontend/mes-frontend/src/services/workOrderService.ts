@@ -27,6 +27,7 @@ export interface BackendWorkOrder {
   target_qty: number;
   priority: number;
   status: string;
+  due_date: string | null;
   created_by: { id: string; username: string } | null;
   created_at: string;
   updated_at: string;
@@ -86,6 +87,9 @@ export const getWorkOrders = async (): Promise<MockWorkOrder[] | BackendWorkOrde
 
     const agg = aggByWo.get(wo.id);
 
+    // Prefer the real customer-facing deadline; fall back to created_at if absent.
+    const dueIso = wo.due_date ?? wo.created_at;
+
     return {
       key: wo.id,
       id: wo.code || wo.id.substring(0, 8),
@@ -94,7 +98,7 @@ export const getWorkOrders = async (): Promise<MockWorkOrder[] | BackendWorkOrde
       completed: agg?.completed ?? 0,
       priority: prioStr,
       status: statStr,
-      dueDate: wo.created_at ? wo.created_at.split("T")[0] : "",
+      dueDate: dueIso ? dueIso.split("T")[0] : "",
       assignmentType: agg?.hasLine ? ("existing-line" as const) : ("machine" as const),
     };
   });

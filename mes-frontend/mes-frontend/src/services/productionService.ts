@@ -40,6 +40,8 @@ interface BackendExecution {
   part_name?: string;
   target_qty?: number;
   actual_qty?: number;
+  priority?: number;
+  due_date?: string | null;
   production_line_id?: string | null;
   production_line_slug?: string | null;
   production_line_name?: string | null;
@@ -157,6 +159,10 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
     // arrays the UI joins against (display tags expect "CNC-001", not a UUID).
     const machineSlug = e.machine?.slug || e.machine?.id || "";
 
+    let prio: "High" | "Normal" | "Low" = "Normal";
+    if (e.priority === 1) prio = "High";
+    else if (e.priority === 3) prio = "Low";
+
     return {
       key: e.id,
       id: e.work_order_code || e.id.substring(0, 8).toUpperCase(),
@@ -168,6 +174,8 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
         : e.status === "AWAITING_START" ? "Scheduled"
         : e.status === "PAUSED" ? "Paused"
         : "Completed",
+      priority: prio,
+      dueDate: e.due_date ? e.due_date.split("T")[0] : undefined,
       targetQty: target,
       actualQty: actual,
       startTime: e.started_at,

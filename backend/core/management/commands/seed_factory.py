@@ -25,6 +25,7 @@ Usage
 """
 
 import random
+from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -254,6 +255,10 @@ class Command(BaseCommand):
             part = parts[part_sku]
             prod_line = lines.get(line_slug) if line_slug else None
 
+            # Spread due dates across the next 1-21 days for a realistic deadline mix.
+            due_offset_days = (hash(wo_code) % 21) + 1
+            due_date = now + timedelta(days=due_offset_days)
+
             wo, created = WorkOrder.objects.get_or_create(
                 code=wo_code,
                 defaults={
@@ -263,9 +268,14 @@ class Command(BaseCommand):
                     "target_qty":  target_qty,
                     "priority":    priority,
                     "status":      wo_status,
+                    "due_date":    due_date,
                     "created_by":  admin,
                 },
             )
+            # Backfill due_date on existing rows seeded before the field was added.
+            if not created and wo.due_date is None:
+                wo.due_date = due_date
+                wo.save(update_fields=["due_date"])
             verb = "✓  Created" if created else "   Exists "
             line_info = f" → {prod_line.name}" if prod_line else ""
             self.stdout.write(f"  {verb}: {wo_code} ({wo_status}){line_info}")

@@ -49,6 +49,25 @@ export const LINE_STATUS_CONFIG: Record<LineStatus, string> = {
   Maintenance: "warning",
 };
 
+export const PRIORITY_COLOR: Record<"High" | "Normal" | "Low", string> = {
+  High: "red",
+  Normal: "blue",
+  Low: "default",
+};
+
+export const PRIORITY_RANK: Record<"High" | "Normal" | "Low", number> = {
+  High: 0,
+  Normal: 1,
+  Low: 2,
+};
+
+export const JOB_STATUS_RANK: Record<JobStatus, number> = {
+  Running: 0,
+  Scheduled: 1,
+  Paused: 2,
+  Completed: 3,
+};
+
 export const MACHINE_TYPE_COLOR: Record<MachineType, string> = {
   CNC: "blue",
   Press: "purple",

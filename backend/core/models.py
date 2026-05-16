@@ -142,6 +142,10 @@ class WorkOrder(models.Model):
     target_qty = models.PositiveIntegerField()
     priority = models.IntegerField(default=1)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    due_date = models.DateTimeField(
+        null=True, blank=True,
+        help_text='Customer-facing deadline for this work order.',
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

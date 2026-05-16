@@ -4,8 +4,16 @@ import {
 } from "antd";
 import type { TableProps } from "antd";
 import { EditOutlined, DeleteOutlined } from "@ant-design/icons";
-import type { WorkOrder, LineInfo, MachineInfo } from "../types";
+import type { WorkOrder, Priority, OrderStatus, LineInfo, MachineInfo } from "../types";
 import { STATUS_CONFIG, PRIORITY_COLOR, MACHINE_TYPE_COLOR } from "../constants";
+
+const PRIORITY_RANK: Record<Priority, number> = { High: 0, Normal: 1, Low: 2 };
+const STATUS_RANK: Record<OrderStatus, number> = {
+  "In Progress": 0,
+  Pending: 1,
+  Delayed: 2,
+  Completed: 3,
+};
 
 const { Text } = Typography;
 
@@ -37,17 +45,20 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         title: "Order ID",
         dataIndex: "id",
         key: "id",
+        sorter: (a, b) => a.id.localeCompare(b.id),
         render: (text: string) => <Text strong>{text}</Text>,
       },
       {
         title: "Product",
         dataIndex: "product",
         key: "product",
+        sorter: (a, b) => a.product.localeCompare(b.product),
       },
       {
         title: "Priority",
         dataIndex: "priority",
         key: "priority",
+        sorter: (a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority],
         render: (priority: WorkOrder["priority"]) => (
           <Tag color={PRIORITY_COLOR[priority]}>{priority.toUpperCase()}</Tag>
         ),
@@ -104,6 +115,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         title: "Status",
         dataIndex: "status",
         key: "status",
+        sorter: (a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status],
         render: (status: WorkOrder["status"]) => {
           const config = STATUS_CONFIG[status];
           return (
@@ -117,6 +129,11 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         title: "Progress",
         key: "progress",
         width: 180,
+        sorter: (a, b) => {
+          const ap = a.quantity > 0 ? a.completed / a.quantity : 0;
+          const bp = b.quantity > 0 ? b.completed / b.quantity : 0;
+          return ap - bp;
+        },
         render: (_: unknown, record: WorkOrder) => {
           const percent =
             record.quantity > 0
@@ -137,6 +154,11 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         title: "Due Date",
         dataIndex: "dueDate",
         key: "dueDate",
+        sorter: (a, b) => {
+          const av = a.dueDate ? Date.parse(a.dueDate) : Infinity;
+          const bv = b.dueDate ? Date.parse(b.dueDate) : Infinity;
+          return av - bv;
+        },
       },
       {
         title: "Actions",

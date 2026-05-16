@@ -21,7 +21,13 @@ import {
   StopOutlined,
 } from "@ant-design/icons";
 import type { ProductionJob, Machine } from "../types";
-import { JOB_STATUS_CONFIG, MACHINE_TYPE_COLOR } from "../constants";
+import {
+  JOB_STATUS_CONFIG,
+  JOB_STATUS_RANK,
+  MACHINE_TYPE_COLOR,
+  PRIORITY_COLOR,
+  PRIORITY_RANK,
+} from "../constants";
 import ProductVisualizer from "./ProductVisualizer";
 import { styles } from "../styles";
 
@@ -52,6 +58,7 @@ const JobsTable: React.FC<JobsTableProps> = ({
         title: "Job ID",
         dataIndex: "id",
         key: "id",
+        sorter: (a, b) => a.id.localeCompare(b.id),
         render: (text: string) => (
           <span style={styles.lineBold}>{text}</span>
         ),
@@ -60,6 +67,7 @@ const JobsTable: React.FC<JobsTableProps> = ({
         title: "Product",
         dataIndex: "productName",
         key: "productName",
+        sorter: (a, b) => a.productName.localeCompare(b.productName),
       },
       {
         title: "Assignment",
@@ -99,9 +107,22 @@ const JobsTable: React.FC<JobsTableProps> = ({
         },
       },
       {
+        title: "Priority",
+        dataIndex: "priority",
+        key: "priority",
+        sorter: (a, b) =>
+          PRIORITY_RANK[a.priority ?? "Normal"] -
+          PRIORITY_RANK[b.priority ?? "Normal"],
+        render: (priority: ProductionJob["priority"]) => {
+          const p = priority ?? "Normal";
+          return <Tag color={PRIORITY_COLOR[p]}>{p.toUpperCase()}</Tag>;
+        },
+      },
+      {
         title: "Status",
         dataIndex: "status",
         key: "status",
+        sorter: (a, b) => JOB_STATUS_RANK[a.status] - JOB_STATUS_RANK[b.status],
         render: (status: ProductionJob["status"]) => {
           const config = JOB_STATUS_CONFIG[status];
           return (
@@ -114,6 +135,11 @@ const JobsTable: React.FC<JobsTableProps> = ({
       {
         title: "Progress",
         key: "progress",
+        sorter: (a, b) => {
+          const ap = a.targetQty > 0 ? a.actualQty / a.targetQty : 0;
+          const bp = b.targetQty > 0 ? b.actualQty / b.targetQty : 0;
+          return ap - bp;
+        },
         render: (_: unknown, record: ProductionJob) => {
           if (record.targetQty === 0)
             return <span style={{ color: "#ccc" }}>N/A</span>;
@@ -130,6 +156,24 @@ const JobsTable: React.FC<JobsTableProps> = ({
             </div>
           );
         },
+      },
+      {
+        title: "Due Date",
+        dataIndex: "dueDate",
+        key: "dueDate",
+        sorter: (a, b) => {
+          const av = a.dueDate ? Date.parse(a.dueDate) : Infinity;
+          const bv = b.dueDate ? Date.parse(b.dueDate) : Infinity;
+          return av - bv;
+        },
+        render: (dueDate?: string) =>
+          dueDate ? dueDate : <span style={{ color: "#ccc" }}>—</span>,
+      },
+      {
+        title: "Est. Completion",
+        dataIndex: "estimatedTimeRemaining",
+        key: "estimatedTimeRemaining",
+        render: (eta: string) => eta || "—",
       },
       {
         title: "Action",

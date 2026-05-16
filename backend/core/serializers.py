@@ -64,7 +64,8 @@ class WorkOrderSerializer(serializers.ModelSerializer):
         model = WorkOrder
         fields = [
             "id", "code", "description", "part", "target_qty",
-            "priority", "status", "created_by", "created_at", "updated_at",
+            "priority", "status", "due_date",
+            "created_by", "created_at", "updated_at",
         ]
         read_only_fields = fields
 
@@ -78,7 +79,10 @@ class WorkOrderCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WorkOrder
-        fields = ["code", "description", "part", "production_line", "target_qty", "priority"]
+        fields = [
+            "code", "description", "part", "production_line",
+            "target_qty", "priority", "due_date",
+        ]
 
 
 class WorkOrderUpdateSerializer(serializers.ModelSerializer):
@@ -86,7 +90,7 @@ class WorkOrderUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WorkOrder
-        fields = ["description", "target_qty", "priority"]
+        fields = ["description", "target_qty", "priority", "due_date"]
 
 
 # ---- Work Order Assignment serializers ----
@@ -126,6 +130,10 @@ class WorkOrderExecutionSerializer(serializers.ModelSerializer):
     work_order_code = serializers.CharField(source="work_order.code", read_only=True)
     part_name = serializers.CharField(source="work_order.part.name", read_only=True)
     target_qty = serializers.IntegerField(source="work_order.target_qty", read_only=True)
+    priority = serializers.IntegerField(source="work_order.priority", read_only=True)
+    due_date = serializers.DateTimeField(
+        source="work_order.due_date", read_only=True, allow_null=True,
+    )
     actual_qty = serializers.SerializerMethodField()
     machine = MachineSerializer(read_only=True)
     operator = _UserMiniSerializer(read_only=True)
@@ -147,7 +155,8 @@ class WorkOrderExecutionSerializer(serializers.ModelSerializer):
         model = WorkOrderExecution
         fields = [
             "id", "work_order", "work_order_code", "part_name", "machine", "operator",
-            "status", "target_qty", "actual_qty", "started_at", "paused_at", "completed_at",
+            "status", "target_qty", "actual_qty", "priority", "due_date",
+            "started_at", "paused_at", "completed_at",
             "production_line_id", "production_line_slug", "production_line_name",
         ]
         read_only_fields = fields
