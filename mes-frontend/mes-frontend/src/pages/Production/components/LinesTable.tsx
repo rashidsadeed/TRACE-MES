@@ -86,6 +86,7 @@ const LinesTable: React.FC<LinesTableProps> = ({ lines, getMachinesForLine }) =>
       dataSource={lines}
       rowKey="key"
       pagination={{ pageSize: 10 }}
+      scroll={{ x: "max-content" }}
     />
   );
 };

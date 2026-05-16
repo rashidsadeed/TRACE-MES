@@ -715,7 +715,7 @@ class ExecutionAPITests(TestCase):
         self.assertEqual(stop_resp.status_code, 200)
 
         execution.refresh_from_db()
-        self.assertEqual(execution.status, "COMPLETED")
+        self.assertEqual(execution.status, "STOPPED")
         self.assertIsNone(execution.paused_at)
 
     # ---- Unauthenticated access returns 401 ----

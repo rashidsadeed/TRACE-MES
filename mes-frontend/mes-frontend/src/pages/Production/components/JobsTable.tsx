@@ -312,6 +312,7 @@ const JobsTable: React.FC<JobsTableProps> = ({
       dataSource={jobs}
       rowKey="key"
       pagination={{ pageSize: 10 }}
+      scroll={{ x: "max-content" }}
       expandable={{
         expandedRowRender,
         expandRowByClick: true,

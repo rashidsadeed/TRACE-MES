@@ -99,7 +99,8 @@ const buildNodesAndEdges = (
         type: "machine",
         position: { x, y },
         data: {
-          machineId: machine.id,
+          machineId: machine.key,
+          displayId: machine.id,
           name: machine.name,
           type: machine.type,
           status: machine.status,
@@ -164,7 +165,8 @@ const buildNodesAndEdges = (
       type: "machine",
       position: { x: LINE_START_X + idx * MACHINE_GAP_X, y: standY },
       data: {
-        machineId: machine.id,
+        machineId: machine.key,
+        displayId: machine.id,
         name: machine.name,
         type: machine.type,
         status: machine.status,

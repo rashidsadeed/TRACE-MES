@@ -240,7 +240,12 @@ export const MOCK_LINES: MockProductionLine[] = [
 ];
 
 export type AssignmentType = "existing-line" | "machine" | "custom-line";
-export type JobStatus = "Running" | "Paused" | "Scheduled" | "Completed";
+export type JobStatus =
+  | "Running"
+  | "Paused"
+  | "Scheduled"
+  | "Stopped"
+  | "Completed";
 
 export interface MockProductionJob {
   key: string;

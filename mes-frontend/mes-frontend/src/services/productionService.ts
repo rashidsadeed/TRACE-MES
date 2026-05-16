@@ -173,6 +173,7 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
       status: e.status === "RUNNING" ? "Running"
         : e.status === "AWAITING_START" ? "Scheduled"
         : e.status === "PAUSED" ? "Paused"
+        : e.status === "STOPPED" ? "Stopped"
         : "Completed",
       priority: prio,
       dueDate: e.due_date ? e.due_date.split("T")[0] : undefined,

@@ -46,7 +46,12 @@ export interface ProductionLine {
 
 // --- Production Job ---
 
-export type JobStatus = "Running" | "Paused" | "Scheduled" | "Completed";
+export type JobStatus =
+  | "Running"
+  | "Paused"
+  | "Scheduled"
+  | "Stopped"
+  | "Completed";
 
 export interface ProductionJob {
   key: string;

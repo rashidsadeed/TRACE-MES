@@ -186,6 +186,7 @@ class WorkOrderExecution(models.Model):
         ('AWAITING_START', 'Awaiting Start'),
         ('RUNNING', 'Running'),
         ('PAUSED', 'Paused'),
+        ('STOPPED', 'Stopped'),
         ('COMPLETED', 'Completed'),
     ]
 

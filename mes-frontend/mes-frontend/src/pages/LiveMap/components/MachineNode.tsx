@@ -20,7 +20,8 @@ import type { MachineStatus, MachineType } from "../../../services/mockData";
 /* ------------------------------------------------------------------ */
 
 export interface MachineNodeData {
-  machineId: string;
+  machineId: string;       // UUID (used for API calls)
+  displayId: string;       // Slug (shown in tooltip)
   name: string;
   type: MachineType;
   status: MachineStatus;
@@ -111,7 +112,7 @@ const MachineNode: React.FC<NodeProps<MachineNodeType>> = ({ data }) => {
       <Tooltip
         title={
           <div>
-            <div><b>{data.name}</b> ({data.machineId})</div>
+            <div><b>{data.name}</b> ({data.displayId})</div>
             <div>Type: {data.type}</div>
             <div>Status: {meta.label}</div>
             {data.jobName && <div>Job: {data.jobName}</div>}

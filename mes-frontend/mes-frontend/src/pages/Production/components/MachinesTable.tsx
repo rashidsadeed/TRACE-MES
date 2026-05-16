@@ -98,6 +98,7 @@ const MachinesTable: React.FC<MachinesTableProps> = ({ machines }) => {
       dataSource={machines}
       rowKey="key"
       pagination={{ pageSize: 10 }}
+      scroll={{ x: "max-content" }}
     />
   );
 };

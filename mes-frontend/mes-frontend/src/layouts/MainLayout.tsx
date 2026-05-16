@@ -65,7 +65,7 @@ const MainLayout: React.FC = () => {
   };
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
+    <Layout style={{ height: "100vh" }}>
       <Sider
         trigger={null}
         collapsible
@@ -104,7 +104,7 @@ const MainLayout: React.FC = () => {
         />
       </Sider>
 
-      <Layout style={{ background: colorBgLayout }}>
+      <Layout style={{ background: colorBgLayout, minWidth: 0 }}>
         <Header
           style={{
             padding: "0 24px",
@@ -156,8 +156,10 @@ const MainLayout: React.FC = () => {
             margin: "24px 16px",
             padding: 24,
             minHeight: 280,
+            minWidth: 0,
             background: colorBgLayout,
             overflowY: "auto",
+            overflowX: "auto",
           }}
         >
           <Outlet />

@@ -201,7 +201,7 @@ class ExecutionViewSet(viewsets.GenericViewSet):
     POST /api/executions/start/          — start a new execution
     POST /api/executions/{id}/pause/     — pause a running execution
     POST /api/executions/{id}/resume/    — resume a paused execution
-    POST /api/executions/{id}/stop/      — stop (complete) an execution
+    POST /api/executions/{id}/stop/      — stop an execution (terminates early, does not mark Completed)
     """
     queryset = WorkOrderExecution.objects.select_related(
         'work_order', 'work_order__part', 'work_order__production_line',
@@ -365,25 +365,25 @@ class ExecutionViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=['post'], url_path='stop')
     def stop(self, request, pk=None):
-        """Stop (complete) an execution."""
+        """Stop an execution (early termination, distinct from Completed)."""
         with transaction.atomic():
             execution = WorkOrderExecution.objects.select_for_update().get(pk=self.get_object().pk)
 
-            if execution.status == 'COMPLETED':
+            if execution.status in ('COMPLETED', 'STOPPED'):
                 return Response(
-                    {'detail': 'Cannot stop: execution is already completed.'},
+                    {'detail': f'Cannot stop: execution is already {execution.status.lower()}.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             before_data = self._serialize(execution)
 
-            execution.status = 'COMPLETED'
+            execution.status = 'STOPPED'
             execution.completed_at = timezone.now()
             execution.paused_at = None  # B-4: clear paused_at when stopping a paused execution
             execution.save(update_fields=['status', 'completed_at', 'paused_at'])
 
             work_order = WorkOrder.objects.select_for_update().get(pk=execution.work_order_id)
-            work_order.status = 'COMPLETED'
+            work_order.status = 'CANCELLED'
             work_order.save(update_fields=['status'])
 
             # B-3: Only set machine IDLE if no other active executions exist on it

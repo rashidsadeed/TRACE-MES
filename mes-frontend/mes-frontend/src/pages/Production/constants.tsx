@@ -30,6 +30,7 @@ export const JOB_STATUS_CONFIG: Record<
   Running: { icon: <PlayCircleOutlined />, color: "success" },
   Paused: { icon: <PauseCircleOutlined />, color: "warning" },
   Scheduled: { icon: <ClockCircleOutlined />, color: "processing" },
+  Stopped: { icon: <StopOutlined />, color: "error" },
   Completed: { icon: <CheckCircleOutlined />, color: "default" },
 };
 
@@ -65,7 +66,8 @@ export const JOB_STATUS_RANK: Record<JobStatus, number> = {
   Running: 0,
   Scheduled: 1,
   Paused: 2,
-  Completed: 3,
+  Stopped: 3,
+  Completed: 4,
 };
 
 export const MACHINE_TYPE_COLOR: Record<MachineType, string> = {
