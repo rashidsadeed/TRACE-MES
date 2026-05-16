@@ -4,7 +4,7 @@ from .models import (
     Machine, Part, WorkOrder, WorkOrderAssignment, WorkOrderExecution,
     DefectCode, ProductionLog, AnomalySnapshot, ScrapLog,
     TelemetryPacket, MachineEvent,
-    DataExportJob, SystemConfig, Operation,
+    DataExportJob, SystemConfig, Operation, ProductionLine,
 )
 
 User = get_user_model()
@@ -14,6 +14,27 @@ class MachineSerializer(serializers.ModelSerializer):
     class Meta:
         model = Machine
         fields = ["id", "name", "type", "status", "slug"]
+
+
+class ProductionLineSerializer(serializers.ModelSerializer):
+    """Read serializer for production lines — includes nested machines."""
+    machines = MachineSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ProductionLine
+        fields = ["id", "name", "slug", "status", "machines"]
+        read_only_fields = fields
+
+
+class ProductionLineWriteSerializer(serializers.ModelSerializer):
+    """Write serializer for create / partial_update on production lines."""
+    machines = serializers.PrimaryKeyRelatedField(
+        queryset=Machine.objects.all(), many=True, required=False,
+    )
+
+    class Meta:
+        model = ProductionLine
+        fields = ["name", "status", "machines"]
 
 
 class PartSerializer(serializers.ModelSerializer):
@@ -51,10 +72,13 @@ class WorkOrderSerializer(serializers.ModelSerializer):
 class WorkOrderCreateSerializer(serializers.ModelSerializer):
     """Write serializer — used for POST (create)."""
     part = serializers.PrimaryKeyRelatedField(queryset=Part.objects.all())
+    production_line = serializers.PrimaryKeyRelatedField(
+        queryset=ProductionLine.objects.all(), required=False, allow_null=True,
+    )
 
     class Meta:
         model = WorkOrder
-        fields = ["code", "description", "part", "target_qty", "priority"]
+        fields = ["code", "description", "part", "production_line", "target_qty", "priority"]
 
 
 class WorkOrderUpdateSerializer(serializers.ModelSerializer):
@@ -105,6 +129,15 @@ class WorkOrderExecutionSerializer(serializers.ModelSerializer):
     actual_qty = serializers.SerializerMethodField()
     machine = MachineSerializer(read_only=True)
     operator = _UserMiniSerializer(read_only=True)
+    production_line_id = serializers.UUIDField(
+        source="work_order.production_line_id", read_only=True, allow_null=True,
+    )
+    production_line_slug = serializers.SlugField(
+        source="work_order.production_line.slug", read_only=True, allow_null=True, default=None,
+    )
+    production_line_name = serializers.CharField(
+        source="work_order.production_line.name", read_only=True, allow_null=True, default=None,
+    )
 
     def get_actual_qty(self, obj):
         # Calculate sum of good_qty from all related production logs
@@ -115,6 +148,7 @@ class WorkOrderExecutionSerializer(serializers.ModelSerializer):
         fields = [
             "id", "work_order", "work_order_code", "part_name", "machine", "operator",
             "status", "target_qty", "actual_qty", "started_at", "paused_at", "completed_at",
+            "production_line_id", "production_line_slug", "production_line_name",
         ]
         read_only_fields = fields
 
@@ -125,6 +159,8 @@ class ExecutionStartSerializer(serializers.Serializer):
     machine = serializers.PrimaryKeyRelatedField(queryset=Machine.objects.all())
     operator = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(is_active=True),
+        required=False,
+        allow_null=True,
     )
 
     def validate_work_order(self, value):

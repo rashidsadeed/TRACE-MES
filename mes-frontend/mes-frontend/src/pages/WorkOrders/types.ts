@@ -36,7 +36,8 @@ export type MachineStatus = "Available" | "In Use" | "Maintenance" | "Error";
 export type LineStatus = "Active" | "Idle" | "Maintenance";
 
 export interface MachineInfo {
-  id: string;
+  key?: string;       // Backend UUID — used for API calls
+  id: string;         // Slug — used for display
   name: string;
   type: MachineType;
   status: MachineStatus;

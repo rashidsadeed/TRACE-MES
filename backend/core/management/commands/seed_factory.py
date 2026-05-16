@@ -10,8 +10,10 @@ Creates
 * 10 machines           (types matching the frontend mock data)
 * 5 parts / products
 * 8 defect codes
-* 9 work orders         (7 IN_PROGRESS + 2 PENDING)
-* Assignments + RUNNING executions for every IN_PROGRESS order
+* 3 production lines    (groups of machines)
+* 9 work orders         (mixed statuses for a realistic snapshot)
+* Assignments + executions (RUNNING / AWAITING_START / COMPLETED)
+* Initial production logs so jobs already have progress
 * Initial STATUS_CHANGE MachineEvent for each RUNNING machine
 
 Safe to re-run: existing records (matched by slug / code / sku) are
@@ -28,8 +30,9 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from core.models import (
-    Machine, Part, DefectCode,
+    Machine, Part, DefectCode, ProductionLine,
     WorkOrder, WorkOrderAssignment, WorkOrderExecution, MachineEvent,
+    ProductionLog,
 )
 from users.models import CustomUser
 
@@ -74,19 +77,40 @@ DEFECT_CODES = [
     ("DC-008", "Burr not removed at edge",           "Finishing"),
 ]
 
-# (part_sku, wo_code, description, target_qty, priority, machine_slug or None)
-# machine_slug=None  →  PENDING order (no execution created)
+# Production lines (name, slug, machine_slugs)
+PRODUCTION_LINES = [
+    ("Auto Parts Assembly Line", "line-auto-parts", ["cnc-001", "press-001", "weld-001"]),
+    ("PCB Manufacturing Line",   "line-pcb",        ["solder-001", "test-001"]),
+    ("Injection Molding Line",   "line-molding",     ["mold-001"]),
+]
+
+# Work orders with realistic mixed statuses
+# (part_sku, wo_code, description, target_qty, priority, status,
+#  machine_slug_or_None, line_slug_or_None, exec_status_or_None, initial_progress_pct)
 WORK_ORDERS = [
-    ("AP-X200", "WO-2026-001", "Auto Part X-200 milling run — Batch #47",    5000, 3, "cnc-001"),
-    ("CB-V2",   "WO-2026-002", "Circuit Board V2 soldering — Lot #18",        2000, 2, "solder-001"),
-    ("BC-Y",    "WO-2026-003", "Battery Casing press forming — Shift A",       3000, 3, "press-001"),
-    ("SH-V3",   "WO-2026-004", "Sensor Housing weld sealing — Series V3",      1000, 2, "weld-001"),
-    ("AP-X200", "WO-2026-005", "Auto Part functional test run",                5000, 2, "test-001"),
-    ("HB-A",    "WO-2026-006", "Hydraulic Bracket final assembly",             2000, 2, "asm-001"),
-    ("CB-V2",   "WO-2026-007", "Circuit Board secondary CNC trimming",         1500, 1, "cnc-002"),
-    # PENDING — queued for mold / packaging
-    ("SH-V3",   "WO-2026-008", "Sensor Housing injection moulding — queue",     800, 1, None),
-    ("HB-A",    "WO-2026-009", "Hydraulic Bracket packaging run",              1500, 1, None),
+    # --- RUNNING on production lines ---
+    ("AP-X200", "WO-2026-001", "Auto Part X-200 milling run — Batch #47",
+     5000, 3, "IN_PROGRESS", "cnc-001", "line-auto-parts", "RUNNING", 35),
+    ("CB-V2",   "WO-2026-002", "Circuit Board V2 soldering — Lot #18",
+     2000, 2, "IN_PROGRESS", "solder-001", "line-pcb", "RUNNING", 62),
+    # --- RUNNING on direct machine assignment ---
+    ("BC-Y",    "WO-2026-003", "Battery Casing press forming — Shift A",
+     3000, 3, "IN_PROGRESS", "press-001", None, "RUNNING", 18),
+    ("SH-V3",   "WO-2026-004", "Sensor Housing weld sealing — Series V3",
+     1000, 2, "IN_PROGRESS", "weld-001", None, "RUNNING", 45),
+    # --- AWAITING_START (machine safety confirmation pending) ---
+    ("AP-X200", "WO-2026-005", "Auto Part functional test run",
+     5000, 2, "IN_PROGRESS", "test-001", None, "AWAITING_START", 0),
+    # --- COMPLETED (historical jobs) ---
+    ("HB-A",    "WO-2026-006", "Hydraulic Bracket final assembly — DONE",
+     2000, 2, "COMPLETED", "asm-001", None, "COMPLETED", 100),
+    ("CB-V2",   "WO-2026-007", "Circuit Board secondary CNC trimming — DONE",
+     1500, 1, "COMPLETED", "cnc-002", None, "COMPLETED", 100),
+    # --- PENDING (not yet accepted — visible in Accept Order) ---
+    ("SH-V3",   "WO-2026-008", "Sensor Housing injection moulding — queue",
+     800, 1, "PENDING", None, None, None, 0),
+    ("HB-A",    "WO-2026-009", "Hydraulic Bracket packaging run",
+     1500, 1, "PENDING", None, None, None, 0),
 ]
 
 
@@ -105,7 +129,8 @@ class Command(BaseCommand):
         machines   = self._create_machines()
         parts      = self._create_parts()
         self._create_defect_codes()
-        self._create_work_orders(admin, machines, parts, operators)
+        lines      = self._create_production_lines(machines)
+        self._create_work_orders(admin, machines, parts, operators, lines)
 
         self.stdout.write(self.style.SUCCESS(
             "\n✓  Factory seed complete — system is ready for live data generation.\n"
@@ -193,17 +218,48 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(f"  ✓  DefectCode: {code} — {desc[:40]}")
 
-    def _create_work_orders(self, admin, machines, parts, operators):
+    def _create_production_lines(self, machines):
+        line_map = {}
+        self.stdout.write("\n  --- Production Lines ---")
+        for name, slug, machine_slugs in PRODUCTION_LINES:
+            obj, created = ProductionLine.objects.get_or_create(
+                slug=slug,
+                defaults={"name": name, "status": "ACTIVE"},
+            )
+            # Assign machines to line
+            for ms in machine_slugs:
+                m = machines.get(ms)
+                if m:
+                    obj.machines.add(m)
+            line_map[slug] = obj
+            verb = "✓  Created" if created else "   Exists "
+            machine_names = ", ".join(m.name for m in obj.machines.all())
+            self.stdout.write(f"  {verb}: {name:30s} [{machine_names}]")
+
+        # Injection Molding Line → IDLE (no running work)
+        molding_line = line_map.get("line-molding")
+        if molding_line:
+            molding_line.status = "IDLE"
+            molding_line.save(update_fields=["status"])
+
+        return line_map
+
+    def _create_work_orders(self, admin, machines, parts, operators, lines):
         self.stdout.write("\n  --- Work Orders ---")
-        for part_sku, wo_code, description, target_qty, priority, machine_slug in WORK_ORDERS:
-            part      = parts[part_sku]
-            wo_status = "IN_PROGRESS" if machine_slug else "PENDING"
+        now = timezone.now()
+
+        for (part_sku, wo_code, description, target_qty, priority,
+             wo_status, machine_slug, line_slug, exec_status, progress_pct) in WORK_ORDERS:
+
+            part = parts[part_sku]
+            prod_line = lines.get(line_slug) if line_slug else None
 
             wo, created = WorkOrder.objects.get_or_create(
                 code=wo_code,
                 defaults={
                     "description": description,
                     "part":        part,
+                    "production_line": prod_line,
                     "target_qty":  target_qty,
                     "priority":    priority,
                     "status":      wo_status,
@@ -211,14 +267,17 @@ class Command(BaseCommand):
                 },
             )
             verb = "✓  Created" if created else "   Exists "
-            self.stdout.write(f"  {verb}: {wo_code} ({wo_status})")
+            line_info = f" → {prod_line.name}" if prod_line else ""
+            self.stdout.write(f"  {verb}: {wo_code} ({wo_status}){line_info}")
 
-            if not machine_slug:
+            if not machine_slug or not exec_status:
                 continue
 
             machine = machines.get(machine_slug)
             if not machine:
-                self.stdout.write(self.style.WARNING(f"    ! Machine slug '{machine_slug}' not found — skipping assignment"))
+                self.stdout.write(self.style.WARNING(
+                    f"    ! Machine slug '{machine_slug}' not found — skipping"
+                ))
                 continue
 
             # Assignment
@@ -232,34 +291,58 @@ class Command(BaseCommand):
                 )
                 self.stdout.write(f"    → Assigned: {machine.name} / {operator.username}")
 
-            # Execution (only if no active one exists)
-            if not WorkOrderExecution.objects.filter(
-                work_order=wo, machine=machine, status__in=["RUNNING", "PAUSED"]
-            ).exists():
+            # Execution
+            if not WorkOrderExecution.objects.filter(work_order=wo, machine=machine).exists():
                 operator = random.choice(operators)
-                WorkOrderExecution.objects.create(
+                exec_obj = WorkOrderExecution.objects.create(
                     work_order=wo,
                     machine=machine,
                     operator=operator,
-                    status="RUNNING",
+                    status=exec_status,
                 )
-                # Ensure WO is IN_PROGRESS
-                if wo.status != "IN_PROGRESS":
-                    wo.status = "IN_PROGRESS"
-                    wo.save(update_fields=["status", "updated_at"])
-                # Ensure machine is RUNNING
-                if machine.status != "RUNNING":
-                    machine.status = "RUNNING"
-                    machine.save(update_fields=["status"])
+
+                # Set completion time for COMPLETED executions
+                if exec_status == "COMPLETED":
+                    exec_obj.completed_at = now
+                    exec_obj.save(update_fields=["completed_at"])
+                    # Machine should be IDLE after completed work
+                    if not WorkOrderExecution.objects.filter(
+                        machine=machine, status__in=["RUNNING", "AWAITING_START"]
+                    ).exists():
+                        machine.status = "IDLE"
+                        machine.save(update_fields=["status"])
+
+                # Ensure machine is RUNNING for active executions
+                if exec_status in ("RUNNING", "AWAITING_START"):
+                    if machine.status != "RUNNING":
+                        machine.status = "RUNNING"
+                        machine.save(update_fields=["status"])
+
                 # Initial machine event
                 MachineEvent.objects.create(
                     machine=machine,
                     event_type="STATUS_CHANGE",
                     details={
                         "from":   "IDLE",
-                        "to":     "RUNNING",
-                        "reason": "WorkOrder execution started via seed_factory",
+                        "to":     exec_status,
+                        "reason": f"Execution {exec_status} via seed_factory",
                         "work_order": wo_code,
                     },
                 )
-                self.stdout.write(f"    → Execution RUNNING on {machine.name}")
+
+                # Create initial production progress
+                if progress_pct > 0:
+                    initial_qty = int(target_qty * progress_pct / 100)
+                    scrap_qty = max(1, int(initial_qty * 0.002))  # ~0.2% scrap
+                    ProductionLog.objects.create(
+                        execution=exec_obj,
+                        recorded_by=operator,
+                        good_qty=initial_qty,
+                        scrap_qty=scrap_qty,
+                    )
+                    self.stdout.write(
+                        f"    → Execution {exec_status} on {machine.name}"
+                        f" (initial progress: {initial_qty}/{target_qty} = {progress_pct}%)"
+                    )
+                else:
+                    self.stdout.write(f"    → Execution {exec_status} on {machine.name}")

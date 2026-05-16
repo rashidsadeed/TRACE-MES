@@ -20,11 +20,13 @@ from .models import (
     Machine, Part, WorkOrder, WorkOrderAssignment, WorkOrderExecution,
     DefectCode, ProductionLog, AnomalySnapshot, ScrapLog,
     TelemetryPacket, MachineEvent,
-    DataExportJob, SystemConfig, Operation,
+    DataExportJob, SystemConfig, Operation, ProductionLine,
 )
 from .serializers import (
     MachineSerializer,
     PartSerializer,
+    ProductionLineSerializer,
+    ProductionLineWriteSerializer,
     WorkOrderSerializer,
     WorkOrderCreateSerializer,
     WorkOrderUpdateSerializer,
@@ -201,7 +203,10 @@ class ExecutionViewSet(viewsets.GenericViewSet):
     POST /api/executions/{id}/resume/    — resume a paused execution
     POST /api/executions/{id}/stop/      — stop (complete) an execution
     """
-    queryset = WorkOrderExecution.objects.select_related('work_order', 'machine', 'operator')
+    queryset = WorkOrderExecution.objects.select_related(
+        'work_order', 'work_order__part', 'work_order__production_line',
+        'machine', 'operator',
+    ).prefetch_related('production_logs')
     serializer_class = WorkOrderExecutionSerializer
     permission_classes = [IsAuthenticated]
 
@@ -246,7 +251,7 @@ class ExecutionViewSet(viewsets.GenericViewSet):
             machine = Machine.objects.select_for_update().get(
                 pk=serializer.validated_data['machine'].pk
             )
-            operator = serializer.validated_data['operator']
+            operator = serializer.validated_data.get('operator')
 
             # Re-validate after locking
             if work_order.status not in ('PENDING', 'PAUSED'):
@@ -268,12 +273,13 @@ class ExecutionViewSet(viewsets.GenericViewSet):
             machine.status = 'RUNNING'
             machine.save(update_fields=['status'])
 
-            # Create execution record
+            # Create execution record  — starts as AWAITING_START
+            # (simulates waiting for physical machine confirmation)
             execution = WorkOrderExecution.objects.create(
                 work_order=work_order,
                 machine=machine,
                 operator=operator,
-                status='RUNNING',
+                status='AWAITING_START',
             )
 
         after_data = self._serialize(execution)
@@ -754,6 +760,28 @@ class OperationViewSet(viewsets.ModelViewSet):
     queryset = Operation.objects.all().order_by('name')
     serializer_class = OperationSerializer
     http_method_names = ['get', 'post', 'put', 'delete', 'head', 'options']
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAuthenticated()]
+        return [IsAdminUser()]
+
+
+class ProductionLineViewSet(viewsets.ModelViewSet):
+    """
+    GET    /api/production-lines/       — list production lines
+    POST   /api/production-lines/       — create a production line
+    GET    /api/production-lines/{id}/  — retrieve a production line
+    PATCH  /api/production-lines/{id}/  — partial update
+    DELETE /api/production-lines/{id}/  — delete
+    """
+    queryset = ProductionLine.objects.prefetch_related('machines').all().order_by('name')
+    http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
+
+    def get_serializer_class(self):
+        if self.action in ('create', 'partial_update', 'update'):
+            return ProductionLineWriteSerializer
+        return ProductionLineSerializer
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):

@@ -49,7 +49,33 @@ class Operation(models.Model):
 
     def __str__(self):
         return self.name
-    
+
+
+class ProductionLine(models.Model):
+    """A named group of machines that work together on a product flow."""
+    STATUS_CHOICES = [
+        ('ACTIVE', 'Active'),
+        ('IDLE', 'Idle'),
+        ('MAINTENANCE', 'Maintenance'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(unique=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='IDLE')
+    machines = models.ManyToManyField(Machine, related_name='production_lines', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            from django.utils.text import slugify
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.name} ({self.status})"
+
+
 # ---- SYSTEM AND AUDIT MODELS -----
 
 class SystemConfig(models.Model):
@@ -108,6 +134,11 @@ class WorkOrder(models.Model):
     code = models.CharField(max_length=50, unique=True, help_text='e.g. WO-2026-001')
     description = models.TextField(blank=True)
     part = models.ForeignKey(Part, on_delete=models.PROTECT, related_name='work_orders')
+    production_line = models.ForeignKey(
+        'ProductionLine', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='work_orders',
+        help_text='Optional production line assignment for this work order.',
+    )
     target_qty = models.PositiveIntegerField()
     priority = models.IntegerField(default=1)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
@@ -148,6 +179,7 @@ class WorkOrderAssignment(models.Model):
 
 class WorkOrderExecution(models.Model):
     STATUS_CHOICES = [
+        ('AWAITING_START', 'Awaiting Start'),
         ('RUNNING', 'Running'),
         ('PAUSED', 'Paused'),
         ('COMPLETED', 'Completed'),

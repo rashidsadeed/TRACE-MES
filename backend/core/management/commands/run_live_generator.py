@@ -36,6 +36,7 @@ from django.utils import timezone
 
 from core.models import (
     Machine,
+    WorkOrder,
     WorkOrderExecution,
     TelemetryPacket,
     MachineEvent,
@@ -43,6 +44,7 @@ from core.models import (
     ScrapLog,
     AnomalySnapshot,
     DefectCode,
+    ProductionLine,
 )
 from users.models import CustomUser
 
@@ -214,6 +216,9 @@ class Command(BaseCommand):
         # execution_id → {"good": int, "scrap": int}
         prod_accumulator: dict[str, dict[str, int]] = defaultdict(lambda: {"good": 0, "scrap": 0})
 
+        # awaiting_exec_id → tick when first seen (for delayed activation)
+        awaiting_start_seen: dict[str, int] = {}
+
         tick = 0
 
         try:
@@ -293,6 +298,25 @@ class Command(BaseCommand):
                 # ----------------------------------------------------------
                 if tick % 600 == 0:
                     self._prune_old_telemetry()
+
+                # ----------------------------------------------------------
+                # Every ~15 ticks — AWAITING_START → RUNNING transition
+                # (simulates physical machine confirmation after 30-60s)
+                # ----------------------------------------------------------
+                if tick % 15 == 0:
+                    self._transition_awaiting_start(awaiting_start_seen, tick, states)
+
+                # ----------------------------------------------------------
+                # Every ~60 ticks — Check job completion (actual >= target)
+                # ----------------------------------------------------------
+                if tick % 60 == 0:
+                    self._check_job_completion()
+
+                # ----------------------------------------------------------
+                # Every ~120 ticks — Update production line statuses
+                # ----------------------------------------------------------
+                if tick % 120 == 0:
+                    self._update_line_statuses()
 
                 # Sleep the remainder of the interval
                 elapsed = time.monotonic() - tick_start
@@ -437,3 +461,109 @@ class Command(BaseCommand):
         deleted, _ = TelemetryPacket.objects.filter(timestamp__lt=cutoff).delete()
         if deleted:
             self.stdout.write(f"  [Prune  ] {deleted} old telemetry packet(s) removed")
+
+    def _transition_awaiting_start(self, seen: dict, current_tick: int, states: dict):
+        """
+        Transition AWAITING_START executions to RUNNING after a simulated
+        delay (30-60 ticks ≈ 30-60 seconds), simulating physical machine
+        confirmation at the factory floor.
+        """
+        awaiting = list(
+            WorkOrderExecution.objects
+            .filter(status="AWAITING_START")
+            .select_related("machine", "work_order")
+        )
+        for exc in awaiting:
+            eid = str(exc.id)
+            if eid not in seen:
+                seen[eid] = current_tick
+                delay = random.randint(30, 60)
+                self.stdout.write(
+                    f"  [Await  ] {exc.machine.name} — will start in ~{delay}s"
+                )
+                seen[eid] = current_tick + delay  # tick when it should start
+                continue
+
+            if current_tick >= seen[eid]:
+                # Transition to RUNNING
+                exc.status = "RUNNING"
+                exc.save(update_fields=["status"])
+
+                # Ensure machine is RUNNING
+                exc.machine.status = "RUNNING"
+                exc.machine.save(update_fields=["status"])
+
+                # Initialise telemetry state
+                mid = str(exc.machine_id)
+                if mid not in states:
+                    states[mid] = MachineState(exc.machine.type)
+
+                MachineEvent.objects.create(
+                    machine=exc.machine,
+                    event_type="STATUS_CHANGE",
+                    details={
+                        "from": "AWAITING_START",
+                        "to": "RUNNING",
+                        "reason": "Physical machine confirmation received",
+                        "work_order": exc.work_order.code,
+                    },
+                )
+
+                del seen[eid]
+                self.stdout.write(self.style.SUCCESS(
+                    f"  [START  ] {exc.machine.name} — {exc.work_order.code} now RUNNING"
+                ))
+
+    def _check_job_completion(self):
+        """
+        Auto-complete executions where actual_qty >= target_qty.
+        """
+        running = (
+            WorkOrderExecution.objects
+            .filter(status="RUNNING")
+            .select_related("work_order", "machine")
+        )
+        for exc in running:
+            actual = sum(log.good_qty for log in exc.production_logs.all())
+            target = exc.work_order.target_qty
+            if actual >= target:
+                exc.status = "COMPLETED"
+                exc.completed_at = timezone.now()
+                exc.save(update_fields=["status", "completed_at"])
+
+                exc.work_order.status = "COMPLETED"
+                exc.work_order.save(update_fields=["status"])
+
+                # Only set machine IDLE if no other active executions
+                other_active = WorkOrderExecution.objects.filter(
+                    machine=exc.machine,
+                    status__in=["RUNNING", "AWAITING_START"],
+                ).exclude(pk=exc.pk).exists()
+                if not other_active:
+                    exc.machine.status = "IDLE"
+                    exc.machine.save(update_fields=["status"])
+
+                self.stdout.write(self.style.SUCCESS(
+                    f"  [DONE   ] {exc.work_order.code} COMPLETED "
+                    f"({actual}/{target}) on {exc.machine.name}"
+                ))
+
+    def _update_line_statuses(self):
+        """
+        Sync production line statuses based on their machines' states.
+        If any machine in the line is RUNNING → line is ACTIVE.
+        If all machines are IDLE → line is IDLE.
+        If any machine is DOWN → line stays ACTIVE but with a warning.
+        """
+        for line in ProductionLine.objects.prefetch_related("machines").all():
+            machine_statuses = set(m.status for m in line.machines.all())
+            if "RUNNING" in machine_statuses:
+                new_status = "ACTIVE"
+            elif machine_statuses <= {"IDLE", "OFFLINE"}:
+                new_status = "IDLE"
+            else:
+                new_status = "ACTIVE"  # DOWN machines still mean the line is engaged
+
+            if line.status != new_status:
+                line.status = new_status
+                line.save(update_fields=["status"])

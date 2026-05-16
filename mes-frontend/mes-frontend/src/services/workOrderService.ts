@@ -32,18 +32,49 @@ export interface BackendWorkOrder {
   updated_at: string;
 }
 
+export interface BackendPart {
+  id: string;
+  name: string;
+  sku: string;
+  description: string | null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  READ                                                               */
 /* ------------------------------------------------------------------ */
+
+interface BackendExecutionMini {
+  id: string;
+  work_order: string;
+  status: string;
+  actual_qty?: number;
+  production_line_id?: string | null;
+}
 
 export const getWorkOrders = async (): Promise<MockWorkOrder[] | BackendWorkOrder[]> => {
   if (isMockMode()) {
     await delay();
     return structuredClone(MOCK_WORK_ORDERS);
   }
-  const { data } = await apiClient.get<BackendWorkOrder[]>("/workorders/");
-  
-  return data.map((wo) => {
+  const [wosRes, execsRes] = await Promise.all([
+    apiClient.get<BackendWorkOrder[]>("/workorders/"),
+    apiClient.get<BackendExecutionMini[]>("/executions/"),
+  ]);
+
+  // PENDING WOs surface separately as "order requests" (see getOrderRequests);
+  // excluding them here avoids showing the same WO in both lists.
+  const activeWos = wosRes.data.filter((wo) => wo.status !== "PENDING");
+
+  // Aggregate per-WO: sum actual_qty across executions and detect line assignment.
+  const aggByWo = new Map<string, { completed: number; hasLine: boolean }>();
+  for (const e of execsRes.data) {
+    const cur = aggByWo.get(e.work_order) ?? { completed: 0, hasLine: false };
+    cur.completed += e.actual_qty ?? 0;
+    if (e.production_line_id) cur.hasLine = true;
+    aggByWo.set(e.work_order, cur);
+  }
+
+  return activeWos.map((wo) => {
     let prioStr: MockWorkOrder["priority"] = "Normal";
     if (wo.priority === 1) prioStr = "High";
     if (wo.priority === 3) prioStr = "Low";
@@ -53,16 +84,18 @@ export const getWorkOrders = async (): Promise<MockWorkOrder[] | BackendWorkOrde
     if (wo.status === "COMPLETED") statStr = "Completed";
     if (wo.status === "CANCELLED") statStr = "Delayed";
 
+    const agg = aggByWo.get(wo.id);
+
     return {
       key: wo.id,
       id: wo.code || wo.id.substring(0, 8),
       product: wo.part?.name || wo.description || "Unknown",
       quantity: wo.target_qty,
-      completed: 0, 
+      completed: agg?.completed ?? 0,
       priority: prioStr,
       status: statStr,
       dueDate: wo.created_at ? wo.created_at.split("T")[0] : "",
-      assignmentType: "machine" as const,
+      assignmentType: agg?.hasLine ? ("existing-line" as const) : ("machine" as const),
     };
   });
 };
@@ -97,6 +130,15 @@ export const getLines = async (): Promise<MockWOLineInfo[]> => {
   return [];
 };
 
+export const getParts = async (): Promise<BackendPart[]> => {
+  if (isMockMode()) {
+    await delay(50);
+    return [];
+  }
+  const { data } = await apiClient.get<BackendPart[]>("/parts/");
+  return data;
+};
+
 export const getMachines = async (): Promise<MockWOMachineInfo[]> => {
   if (isMockMode()) {
     await delay();
@@ -110,12 +152,13 @@ export const getMachines = async (): Promise<MockWOMachineInfo[]> => {
     slug: string;
   }>>("/machines/");
   return data.map((m) => ({
-    id: m.id,
+    key: m.id,
+    id: m.slug || m.id,
     name: m.name,
     type: m.type as MockWOMachineInfo["type"],
     status: m.status === "RUNNING" ? "In Use"
       : m.status === "IDLE" ? "Available"
-      : m.status === "DOWN" ? "Maintenance"
+      : m.status === "DOWN" ? "Error"
       : "Maintenance",
   }));
 };

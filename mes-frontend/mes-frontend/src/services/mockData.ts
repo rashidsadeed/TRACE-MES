@@ -323,7 +323,8 @@ export const MOCK_ORDER_REQUESTS: MockOrderRequest[] = [
 export type WOMachineType = "CNC" | "Press" | "Assembly" | "Welding" | "Mold" | "Paint";
 
 export interface MockWOMachineInfo {
-  id: string;
+  key?: string;       // Backend UUID — used for API calls (real mode only)
+  id: string;         // Slug — used for display
   name: string;
   type: WOMachineType;
   status: MachineStatus;

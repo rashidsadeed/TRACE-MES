@@ -5,7 +5,7 @@ from .views import (
     DefectCodeViewSet, ProductionLogCreateView, ScrapLogCreateView,
     LiveOverviewView, MachineTelemetryView, MachineEventListView,
     DataExportJobViewSet,
-    SystemConfigViewSet, OperationViewSet,
+    SystemConfigViewSet, OperationViewSet, ProductionLineViewSet,
 )
 
 router = DefaultRouter()
@@ -17,6 +17,7 @@ router.register(r'defect-codes', DefectCodeViewSet, basename='defect-code')
 router.register(r'export/jobs', DataExportJobViewSet, basename='export-job')
 router.register(r'config', SystemConfigViewSet, basename='config')
 router.register(r'operations', OperationViewSet, basename='operation')
+router.register(r'production-lines', ProductionLineViewSet, basename='production-line')
 
 urlpatterns = [
     path('', include(router.urls)),

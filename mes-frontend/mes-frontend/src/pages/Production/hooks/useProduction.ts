@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Form, message } from "antd";
-import dayjs from "dayjs";
 import type {
   Machine,
   ProductionLine,
@@ -10,8 +9,32 @@ import type {
   AssignmentType,
   StartJobFormValues,
   AcceptOrderFormValues,
+  Priority,
 } from "../types";
 import * as productionService from "../../../services/productionService";
+import * as workOrderService from "../../../services/workOrderService";
+import type {
+  BackendPart,
+  CreateWorkOrderPayload,
+} from "../../../services/workOrderService";
+
+const PRIORITY_TO_NUMBER: Record<Priority, number> = {
+  High: 1,
+  Normal: 2,
+  Low: 3,
+};
+
+const findPartByProductName = (
+  parts: BackendPart[],
+  productName: string,
+): BackendPart | undefined => {
+  const lower = productName.trim().toLowerCase();
+  return (
+    parts.find((p) => p.name.toLowerCase() === lower) ??
+    parts.find((p) => p.name.toLowerCase().includes(lower)) ??
+    parts.find((p) => p.sku.toLowerCase() === lower)
+  );
+};
 
 /** Result of resolving form values into job assignment info. */
 interface AssignmentResult {
@@ -26,25 +49,29 @@ export const useProduction = () => {
   const [lines, setLines] = useState<ProductionLine[]>([]);
   const [jobs, setJobs] = useState<ProductionJob[]>([]);
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
+  const [parts, setParts] = useState<BackendPart[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
 
   // --- Fetch initial data from service ---
-  useEffect(() => {
-    const fetchData = async () => {
-      const [m, l, j, po] = await Promise.all([
-        productionService.getMachines(),
-        productionService.getLines(),
-        productionService.getJobs(),
-        productionService.getPendingOrders(),
-      ]);
-      setMachines(m as Machine[]);
-      setLines(l as ProductionLine[]);
-      setJobs(j as ProductionJob[]);
-      setPendingOrders(po as PendingOrder[]);
-      setDataLoaded(true);
-    };
-    fetchData();
+  const fetchData = useCallback(async () => {
+    const [m, l, j, po, pt] = await Promise.all([
+      productionService.getMachines(),
+      productionService.getLines(),
+      productionService.getJobs(),
+      productionService.getPendingOrders(),
+      workOrderService.getParts(),
+    ]);
+    setMachines(m as Machine[]);
+    setLines(l as ProductionLine[]);
+    setJobs(j as ProductionJob[]);
+    setPendingOrders(po as PendingOrder[]);
+    setParts(pt);
+    setDataLoaded(true);
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // --- Modal ---
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
@@ -114,40 +141,6 @@ export const useProduction = () => {
   }, [jobs, machines]);
 
   // --- Assignment Resolution ---
-
-  const markMachinesBusy = useCallback(
-    (machineIds: string[], jobId: string, lineId?: string) => {
-      setMachines((prev) =>
-        prev.map((m) =>
-          machineIds.includes(m.id)
-            ? {
-                ...m,
-                status: "In Use" as const,
-                currentJobId: jobId,
-                currentLineId: lineId,
-              }
-            : m,
-        ),
-      );
-    },
-    [],
-  );
-
-  const freeMachines = useCallback((machineIds: string[]) => {
-    setMachines((prev) =>
-      prev.map((m) =>
-        machineIds.includes(m.id)
-          ? {
-              ...m,
-              status: "Available" as const,
-              currentJobId: undefined,
-              currentLineId: undefined,
-            }
-          : m,
-      ),
-    );
-  }, []);
-
   const resolveAssignment = useCallback(
     (
       type: AssignmentType,
@@ -171,25 +164,37 @@ export const useProduction = () => {
 
       if (
         type === "custom-line" &&
-        values.customLineName &&
         values.customMachineIds?.length
       ) {
-        const lineId = `LINE-C-${Date.now().toString(36).toUpperCase()}`;
-        const newLine: ProductionLine = {
-          key: Date.now().toString(),
-          id: lineId,
-          name: values.customLineName,
-          isCustom: true,
-          machineIds: values.customMachineIds,
-          status: "Idle",
+        return {
+          assignmentType: type,
+          assignedMachineIds: values.customMachineIds,
         };
-        setLines((prev) => [...prev, newLine]);
-        return { assignmentType: type, lineId };
       }
 
       return { assignmentType: type };
     },
     [],
+  );
+
+  // Convention: machine.id = slug (display), machine.key = UUID (API).
+  // Forms emit slugs; the backend executions/start endpoint expects UUID.
+  const pickTargetMachineId = useCallback(
+    (assignment: AssignmentResult): string | undefined => {
+      const slugToUuid = (slugId: string): string | undefined =>
+        machines.find((m) => m.id === slugId)?.key;
+
+      if (assignment.assignedMachineIds?.length) {
+        return slugToUuid(assignment.assignedMachineIds[0]);
+      }
+      if (assignment.lineId) {
+        const line = lines.find((l) => l.id === assignment.lineId);
+        const firstSlug = line?.machineIds[0];
+        if (firstSlug) return slugToUuid(firstSlug);
+      }
+      return undefined;
+    },
+    [machines, lines],
   );
 
   // --- Modal Helpers ---
@@ -219,134 +224,148 @@ export const useProduction = () => {
     resetConflicts();
   }, [startJobForm, acceptOrderForm, resetConflicts]);
 
-  // --- Handlers ---
+  // --- Handlers (persisted to backend) ---
 
   const handleCreateJob = useCallback(
-    (values: StartJobFormValues) => {
+    async (values: StartJobFormValues) => {
       const assignment = resolveAssignment(values.assignmentType, values);
-      const jobId = `JOB-${Date.now().toString(36).toUpperCase()}`;
+      const machineId = pickTargetMachineId(assignment);
+      if (!machineId) {
+        message.error("Please choose at least one machine for this job.");
+        return;
+      }
 
-      const newJob: ProductionJob = {
-        key: Date.now().toString(),
-        id: jobId,
-        productName: values.productName,
-        assignmentType: assignment.assignmentType,
-        lineId: assignment.lineId,
-        assignedMachineIds: assignment.assignedMachineIds,
-        status: "Scheduled",
-        priority: values.priority,
-        dueDate: values.dueDate ? values.dueDate.format("YYYY-MM-DD") : undefined,
-        targetQty: values.targetQty,
-        actualQty: 0,
-        startTime: "-",
-        currentStageIndex: 0,
-        stages: ["Prep", "Processing", "QC", "Output"],
-        defects: 0,
-        estimatedTimeRemaining: "TBD",
+      const part = findPartByProductName(parts, values.productName);
+      if (!part) {
+        message.error(
+          `Product "${values.productName}" not found in parts catalog. Pick an existing product (e.g. ${parts.slice(0, 3).map((p) => p.name).join(", ") || "—"}).`,
+          5,
+        );
+        return;
+      }
+
+      const woPayload: CreateWorkOrderPayload = {
+        code: `WO-${Date.now().toString(36).toUpperCase()}`,
+        description: values.productName,
+        part: part.id,
+        target_qty: values.targetQty,
+        priority: PRIORITY_TO_NUMBER[values.priority],
       };
 
-      setJobs((prev) => [newJob, ...prev]);
-      closeModal();
-      message.success("New production job scheduled.");
+      try {
+        const wo = await workOrderService.createWorkOrder(woPayload);
+        const woId =
+          typeof wo === "object" && wo !== null && "id" in wo
+            ? (wo as { id: string }).id
+            : "";
+        if (!woId) throw new Error("Backend did not return new work order id.");
+
+        await productionService.createJob({
+          key: woId,
+          id: woId,
+          productName: values.productName,
+          assignmentType: assignment.assignmentType,
+          lineId: assignment.lineId,
+          assignedMachineIds: [machineId],
+          status: "Scheduled",
+          targetQty: values.targetQty,
+          actualQty: 0,
+          startTime: "-",
+          currentStageIndex: 0,
+          stages: ["Prep", "Processing", "QC", "Output"],
+          defects: 0,
+          estimatedTimeRemaining: "TBD",
+        });
+
+        await fetchData();
+        closeModal();
+        message.success("New production job scheduled.");
+      } catch (err) {
+        console.error("handleCreateJob failed", err);
+        message.error("Failed to start production job. Check server logs.");
+      }
     },
-    [resolveAssignment, closeModal],
+    [resolveAssignment, pickTargetMachineId, parts, fetchData, closeModal],
   );
 
   const handleAcceptOrder = useCallback(
-    (values: AcceptOrderFormValues) => {
+    async (values: AcceptOrderFormValues) => {
       if (modal.type !== "acceptOrder") return;
       const { order } = modal;
 
       const assignment = resolveAssignment(values.assignmentType, values);
-      const jobId = `JOB-${order.orderId}`;
+      const machineId = pickTargetMachineId(assignment);
+      if (!machineId) {
+        message.error("Please choose at least one machine for this order.");
+        return;
+      }
 
-      const newJob: ProductionJob = {
-        key: Date.now().toString(),
-        id: jobId,
-        productName: order.product,
-        assignmentType: assignment.assignmentType,
-        lineId: assignment.lineId,
-        assignedMachineIds: assignment.assignedMachineIds,
-        status: "Scheduled",
-        targetQty: order.quantity,
-        actualQty: 0,
-        startTime: "-",
-        currentStageIndex: 0,
-        stages: ["Prep", "Processing", "QC", "Output"],
-        defects: 0,
-        estimatedTimeRemaining: "TBD",
-      };
+      try {
+        await productionService.acceptOrder(order.key, {
+          key: order.key,
+          id: order.key,
+          productName: order.product,
+          assignmentType: assignment.assignmentType,
+          lineId: assignment.lineId,
+          assignedMachineIds: [machineId],
+          status: "Scheduled",
+          targetQty: order.quantity,
+          actualQty: 0,
+          startTime: "-",
+          currentStageIndex: 0,
+          stages: ["Prep", "Processing", "QC", "Output"],
+          defects: 0,
+          estimatedTimeRemaining: "TBD",
+        });
 
-      setJobs((prev) => [newJob, ...prev]);
-      setPendingOrders((prev) => prev.filter((o) => o.key !== order.key));
-      closeModal();
-      message.success(`Order ${order.orderId} accepted into production.`);
+        await fetchData();
+        closeModal();
+        message.success(`Order ${order.orderId} accepted into production.`);
+      } catch (err) {
+        console.error("handleAcceptOrder failed", err);
+        message.error("Failed to accept order. Check server logs.");
+      }
     },
-    [modal, resolveAssignment, closeModal],
+    [modal, resolveAssignment, pickTargetMachineId, fetchData, closeModal],
   );
 
   const handleRunJob = useCallback(
-    (key: string) => {
-      const job = jobs.find((j) => j.key === key);
-      if (!job || job.status !== "Scheduled") return;
-
-      const now = dayjs().format("hh:mm A");
-
-      setJobs((prev) =>
-        prev.map((j) =>
-          j.key === key ? { ...j, status: "Running" as const, startTime: now } : j,
-        ),
-      );
-
-      if (job.assignmentType === "machine" && job.assignedMachineIds?.length) {
-        markMachinesBusy(job.assignedMachineIds, job.id);
-      }
-
-      if (job.lineId) {
-        const line = lines.find((l) => l.id === job.lineId);
-        if (line) {
-          markMachinesBusy(line.machineIds, job.id, line.id);
-          setLines((prev) =>
-            prev.map((l) =>
-              l.id === job.lineId
-                ? { ...l, status: "Active" as const, activeJobId: job.id }
-                : l,
-            ),
-          );
-        }
-      }
-
-      message.success(`Job ${job.id} is now running.`);
-    },
-    [jobs, lines, markMachinesBusy],
-  );
-
-  const handleCancelJob = useCallback(
-    (key: string) => {
+    async (key: string) => {
       const job = jobs.find((j) => j.key === key);
       if (!job) return;
 
-      if (job.assignedMachineIds?.length) {
-        freeMachines(job.assignedMachineIds);
-      }
-      if (job.lineId) {
-        const line = lines.find((l) => l.id === job.lineId);
-        if (line) {
-          freeMachines(line.machineIds);
-          setLines((prev) =>
-            prev.map((l) =>
-              l.id === job.lineId
-                ? { ...l, status: "Idle" as const, activeJobId: undefined }
-                : l,
-            ),
-          );
+      try {
+        // Backend "resume" only works on PAUSED executions.
+        // For SCHEDULED (= AWAITING_START on backend) the live generator flips
+        // the status to RUNNING automatically — we just refetch.
+        if (job.status === "Paused") {
+          await productionService.runJob(job.key);
         }
+        await fetchData();
+        message.success(`Job ${job.id} is now running.`);
+      } catch (err) {
+        console.error("handleRunJob failed", err);
+        message.error("Failed to start job. Check server logs.");
       }
-
-      setJobs((prev) => prev.filter((j) => j.key !== key));
-      message.info("Job cancelled.");
     },
-    [jobs, lines, freeMachines],
+    [jobs, fetchData],
+  );
+
+  const handleCancelJob = useCallback(
+    async (key: string) => {
+      const job = jobs.find((j) => j.key === key);
+      if (!job) return;
+
+      try {
+        await productionService.cancelJob(job.key);
+        await fetchData();
+        message.info("Job cancelled.");
+      } catch (err) {
+        console.error("handleCancelJob failed", err);
+        message.error("Failed to cancel job. Check server logs.");
+      }
+    },
+    [jobs, fetchData],
   );
 
   // --- Lookup helpers ---
@@ -382,68 +401,32 @@ export const useProduction = () => {
     [jobs],
   );
 
-  const handleStopAll = useCallback(() => {
-    setJobs((prev) =>
-      prev.map((j) =>
-        j.status === "Running" ? { ...j, status: "Paused" as const } : j,
-      ),
-    );
-    setMachines((prev) =>
-      prev.map((m) =>
-        m.status === "In Use" ? { ...m, status: "Error" as const } : m,
-      ),
-    );
-    setLines((prev) =>
-      prev.map((l) =>
-        l.status === "Active" ? { ...l, status: "Maintenance" as const } : l,
-      ),
-    );
-    message.error("EMERGENCY STOP: All machines and jobs halted.");
-  }, []);
+  const handleStopAll = useCallback(async () => {
+    try {
+      await productionService.stopAll();
+      await fetchData();
+      message.error("EMERGENCY STOP: All running jobs halted.");
+    } catch (err) {
+      console.error("handleStopAll failed", err);
+      message.error("Failed to stop all jobs. Check server logs.");
+    }
+  }, [fetchData]);
 
   const handleStopJob = useCallback(
-    (key: string) => {
+    async (key: string) => {
       const job = jobs.find((j) => j.key === key);
       if (!job) return;
 
-      setJobs((prev) =>
-        prev.map((j) =>
-          j.key === key ? { ...j, status: "Paused" as const } : j,
-        ),
-      );
-
-      const machineIdsToHalt: string[] = [];
-
-      if (job.assignedMachineIds?.length) {
-        machineIdsToHalt.push(...job.assignedMachineIds);
+      try {
+        await productionService.stopJob(job.key);
+        await fetchData();
+        message.error(`EMERGENCY STOP: Job ${job.id} halted.`);
+      } catch (err) {
+        console.error("handleStopJob failed", err);
+        message.error("Failed to stop job. Check server logs.");
       }
-      if (job.lineId) {
-        const line = lines.find((l) => l.id === job.lineId);
-        if (line) {
-          machineIdsToHalt.push(...line.machineIds);
-          setLines((prev) =>
-            prev.map((l) =>
-              l.id === job.lineId
-                ? { ...l, status: "Maintenance" as const }
-                : l,
-            ),
-          );
-        }
-      }
-
-      if (machineIdsToHalt.length > 0) {
-        setMachines((prev) =>
-          prev.map((m) =>
-            machineIdsToHalt.includes(m.id)
-              ? { ...m, status: "Error" as const }
-              : m,
-          ),
-        );
-      }
-
-      message.error(`EMERGENCY STOP: Job ${job.id} halted.`);
     },
-    [jobs, lines],
+    [jobs, fetchData],
   );
 
   return {

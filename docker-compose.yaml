@@ -1,7 +1,15 @@
 services:
   backend:
     build: ./backend
-    command: python manage.py runserver 0.0.0.0:8000
+    command: >
+      sh -c "
+        echo '=== TRACE-MES Backend Startup ===';
+        python manage.py migrate --run-syncdb;
+        python manage.py seed_factory;
+        python manage.py run_live_generator &
+        echo 'Live generator started in background';
+        python manage.py runserver 0.0.0.0:8000
+      "
     volumes:
       - ./backend:/app
     ports:
@@ -33,7 +41,9 @@ services:
       POSTGRES_USER: mes_user
       POSTGRES_PASSWORD: mes_password
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mes_pgdata:/var/lib/postgresql/data
+    # Data persists across `docker compose down` / `up`.
+    # To wipe and reseed from scratch: `docker compose down -v`
     ports:
       - "5432:5432"
 
@@ -43,4 +53,4 @@ services:
       - "6379:6379"
 
 volumes:
-  postgres_data:
+  mes_pgdata:

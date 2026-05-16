@@ -247,16 +247,29 @@ export const getMachineErrorLogs = async (machineId: string): Promise<MockErrorL
   const { data: events } = await apiClient.get<BackendMachineEvent[]>("/live/events/", {
     params: { machine: machineId, limit: 50 },
   });
-  return events.map((e, idx) => ({
-    key: `evt-${idx}`,
-    timestamp: new Date(e.timestamp).toLocaleTimeString(),
-    errorCode: e.event_type,
-    message: JSON.stringify(e.details ?? {}),
-    severity: e.event_type === "HEARTBEAT_LOST" ? "Critical"
-      : e.event_type === "STATUS_CHANGE" ? "Warning"
-      : "Info" as MockErrorLog["severity"],
-    status: "Active" as MockErrorLog["status"],
-  }));
+  return events.map((e, idx) => {
+    const details = e.details ?? {};
+    const msg = String((details as { message?: unknown }).message ?? "");
+    const hasSnapshot = "snapshot_id" in details;
+
+    // Anomaly-tagged STATUS_CHANGE events carry a snapshot_id (set by the live
+    // generator when a parameter spike fires) — escalate those to Critical.
+    let severity: MockErrorLog["severity"] = "Info";
+    if (e.event_type === "HEARTBEAT_LOST" || hasSnapshot || /anomaly/i.test(msg)) {
+      severity = "Critical";
+    } else if (e.event_type === "STATUS_CHANGE") {
+      severity = "Warning";
+    }
+
+    return {
+      key: `evt-${idx}`,
+      timestamp: new Date(e.timestamp).toLocaleTimeString(),
+      errorCode: e.event_type,
+      message: msg || JSON.stringify(details),
+      severity,
+      status: "Active" as MockErrorLog["status"],
+    };
+  });
 };
 
 /* ------------------------------------------------------------------ */

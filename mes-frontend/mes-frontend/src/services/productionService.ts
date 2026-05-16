@@ -40,6 +40,18 @@ interface BackendExecution {
   part_name?: string;
   target_qty?: number;
   actual_qty?: number;
+  production_line_id?: string | null;
+  production_line_slug?: string | null;
+  production_line_name?: string | null;
+}
+
+/** From ProductionLineSerializer. */
+interface BackendProductionLine {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  machines: BackendMachine[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -72,8 +84,33 @@ export const getLines = async (): Promise<MockProductionLine[]> => {
     await delay(100);
     return simulator.getLines();
   }
-  // Backend does not have production lines. Return empty for real mode.
-  return [];
+  const [linesRes, execsRes] = await Promise.all([
+    apiClient.get<BackendProductionLine[]>("/production-lines/"),
+    apiClient.get<BackendExecution[]>("/executions/", { params: { status: "RUNNING" } }),
+  ]);
+
+  // Map line UUID → first running execution's WO code (display id).
+  const activeByLine = new Map<string, string>();
+  for (const e of execsRes.data) {
+    if (e.production_line_id && !activeByLine.has(e.production_line_id)) {
+      activeByLine.set(
+        e.production_line_id,
+        e.work_order_code || e.id.substring(0, 8).toUpperCase(),
+      );
+    }
+  }
+
+  return linesRes.data.map((line) => ({
+    key: line.id,
+    id: line.slug || line.id,
+    name: line.name,
+    isCustom: false,
+    machineIds: line.machines.map((m) => m.slug || m.id),
+    status: line.status === "ACTIVE" ? "Active"
+      : line.status === "MAINTENANCE" ? "Maintenance"
+      : "Idle",
+    activeJobId: activeByLine.get(line.id),
+  }));
 };
 
 export const getJobs = async (): Promise<MockProductionJob[]> => {
@@ -81,25 +118,67 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
     await delay(100);
     return simulator.getJobs();
   }
-  // Jobs map to "executions" on the backend
+  // Jobs map to "executions" on the backend.
+  // Each part (product) follows a realistic manufacturing route — a sequence
+  // of machine types it must pass through.  The current execution's machine
+  // type determines which step is active in the progress bar.
+
+  const PART_ROUTES: Record<string, string[]> = {
+    "Auto Part X-200":        ["CNC", "Press", "Welding", "Testing", "Packaging"],
+    "Circuit Board V2":       ["CNC", "Soldering", "Testing", "Packaging"],
+    "Battery Casing Model Y": ["Press", "Welding", "Assembly", "Testing"],
+    "Sensor Housing V3":      ["Molding", "Welding", "Testing", "Packaging"],
+    "Hydraulic Bracket A":    ["CNC", "Press", "Assembly", "Testing"],
+  };
+
+  const FALLBACK_ROUTE = ["Prep", "Processing", "QC", "Output"];
+
   const { data } = await apiClient.get<BackendExecution[]>("/executions/");
-  return data.map((e) => ({
-    key: e.id,
-    id: e.work_order_code || e.id.substring(0, 8).toUpperCase(),
-    productName: e.part_name || "Unknown Product",
-    assignmentType: "machine" as const,
-    assignedMachineIds: [e.machine?.id ?? ""],
-    status: e.status === "RUNNING" ? "Running"
-      : e.status === "PAUSED" ? "Paused"
-      : "Completed",
-    targetQty: e.target_qty || 0,
-    actualQty: e.actual_qty || 0,
-    startTime: e.started_at,
-    currentStageIndex: 0,
-    stages: [],
-    defects: 0,
-    estimatedTimeRemaining: "—",
-  }));
+  return data.map((e) => {
+    const actual = e.actual_qty || 0;
+    const target = e.target_qty || 0;
+    const partName = e.part_name || "Unknown Product";
+    const machineType = e.machine?.type ?? "";
+
+    // Resolve the manufacturing route for this part
+    const route = PART_ROUTES[partName] ?? FALLBACK_ROUTE;
+
+    // Find which step the current machine corresponds to
+    let stageIdx = route.indexOf(machineType);
+    if (stageIdx === -1) stageIdx = 0;
+    if (e.status === "COMPLETED") stageIdx = route.length;
+
+    // Determine the assignment type
+    const assignmentType: "existing-line" | "machine" = e.production_line_id
+      ? "existing-line"
+      : "machine";
+
+    // Use slug-based ids so this matches the slug-keyed `machines` / `lines`
+    // arrays the UI joins against (display tags expect "CNC-001", not a UUID).
+    const machineSlug = e.machine?.slug || e.machine?.id || "";
+
+    return {
+      key: e.id,
+      id: e.work_order_code || e.id.substring(0, 8).toUpperCase(),
+      productName: partName,
+      assignmentType,
+      lineId: e.production_line_slug ?? e.production_line_id ?? undefined,
+      assignedMachineIds: [machineSlug],
+      status: e.status === "RUNNING" ? "Running"
+        : e.status === "AWAITING_START" ? "Scheduled"
+        : e.status === "PAUSED" ? "Paused"
+        : "Completed",
+      targetQty: target,
+      actualQty: actual,
+      startTime: e.started_at,
+      currentStageIndex: stageIdx,
+      stages: [...route],
+      defects: 0,
+      estimatedTimeRemaining: target > 0 && actual < target
+        ? `~${Math.ceil(((target - actual) / Math.max(actual, 1)) * 5)}m`
+        : "—",
+    };
+  });
 };
 
 export const getPendingOrders = async (): Promise<MockPendingOrder[]> => {
@@ -147,7 +226,7 @@ export const createJob = async (job: MockProductionJob): Promise<MockProductionJ
   return {
     ...job,
     id: data.id,
-    status: "Running",
+    status: "Scheduled",
   };
 };
 
@@ -198,11 +277,11 @@ export const acceptOrder = async (
     await delay(200);
     return job;
   }
-  // Accept = start an execution
+  // Accept = start an execution (goes to AWAITING_START)
   const { data } = await apiClient.post<BackendExecution>("/executions/start/", {
     work_order: orderId,
     machine: job.assignedMachineIds?.[0],
     operator: null,
   });
-  return { ...job, id: data.id, status: "Running" };
+  return { ...job, id: data.id, status: "Scheduled" };
 };
