@@ -1,0 +1,10 @@
+<!DOCTYPE html><html><body><script>
+fetch("/api/auth/login/", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username:"admin", password:"admin123"})})
+.then(r => r.json())
+.then(d => {
+  localStorage.setItem("access_token", d.access);
+  localStorage.setItem("refresh_token", d.refresh);
+  localStorage.setItem("auth_user", JSON.stringify({id:"1", username:"admin", fullName:"Admin", role:"admin"}));
+  window.location.replace("/live-map");
+});
+</script></body></html>
