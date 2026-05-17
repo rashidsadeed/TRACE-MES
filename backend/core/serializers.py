@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.core.validators import FileExtensionValidator
 from rest_framework import serializers
 from .models import (
     Machine, Part, WorkOrder, WorkOrderAssignment, WorkOrderExecution,
@@ -38,9 +39,31 @@ class ProductionLineWriteSerializer(serializers.ModelSerializer):
 
 
 class PartSerializer(serializers.ModelSerializer):
+    model_file_url = serializers.SerializerMethodField()
+
+    def get_model_file_url(self, obj):
+        request = self.context.get("request")
+        file = getattr(obj, "model_file", None)
+        if file and hasattr(file, "url"):
+            if request:
+                return request.build_absolute_uri(file.url)
+            return file.url
+        return None
+
     class Meta:
         model = Part
-        fields = ["id", "name", "sku", "description"]
+        fields = ["id", "name", "sku", "description", "model_file_url"]
+
+
+class PartModelUploadSerializer(serializers.ModelSerializer):
+    model_file = serializers.FileField(
+        write_only=True,
+        validators=[FileExtensionValidator(allowed_extensions=["glb", "gltf"])],
+    )
+
+    class Meta:
+        model = Part
+        fields = ["model_file"]
 
 
 # ---- Helper for user representation ----
@@ -146,6 +169,16 @@ class WorkOrderExecutionSerializer(serializers.ModelSerializer):
     production_line_name = serializers.CharField(
         source="work_order.production_line.name", read_only=True, allow_null=True, default=None,
     )
+    part_model_url = serializers.SerializerMethodField()
+
+    def get_part_model_url(self, obj):
+        request = self.context.get("request")
+        file = getattr(obj.work_order.part, "model_file", None)
+        if file and hasattr(file, "url"):
+            if request:
+                return request.build_absolute_uri(file.url)
+            return file.url
+        return None
 
     def get_actual_qty(self, obj):
         # Calculate sum of good_qty from all related production logs
@@ -158,6 +191,7 @@ class WorkOrderExecutionSerializer(serializers.ModelSerializer):
             "status", "target_qty", "actual_qty", "priority", "due_date",
             "started_at", "paused_at", "completed_at",
             "production_line_id", "production_line_slug", "production_line_name",
+            "part_model_url",
         ]
         read_only_fields = fields
 

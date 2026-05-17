@@ -45,6 +45,7 @@ interface BackendExecution {
   production_line_id?: string | null;
   production_line_slug?: string | null;
   production_line_name?: string | null;
+  part_model_url?: string | null;
 }
 
 /** From ProductionLineSerializer. */
@@ -180,6 +181,7 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
       targetQty: target,
       actualQty: actual,
       startTime: e.started_at,
+      modelUrl: e.part_model_url ?? undefined,
       currentStageIndex: stageIdx,
       stages: [...route],
       defects: 0,

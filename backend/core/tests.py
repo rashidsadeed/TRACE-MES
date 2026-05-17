@@ -3,6 +3,7 @@ import uuid
 from django.test import TestCase
 from django.db import IntegrityError
 from django.db.models import ProtectedError
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from django.utils import timezone
 from rest_framework import status as http_status
@@ -392,6 +393,71 @@ class WorkOrderAPITests(TestCase):
         _, wo_id = self._create_workorder_via_api(code="WO-DELETE")
         response = self.client.delete(f"{self.base_url}{wo_id}/")
         self.assertEqual(response.status_code, 405)
+
+
+class PartAPITests(TestCase):
+    """API tests for uploading a 3D model to a part."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient as DRFAPIClient
+
+        self.admin_user = CustomUser.objects.create_user(
+            username="partadmin",
+            email="partadmin@example.com",
+            password="SecurePass123!",
+            is_staff=True,
+        )
+        self.part = Part.objects.create(
+            name="Upload Part",
+            sku="UPL-001",
+            description="Part used for model upload testing",
+        )
+
+        self.client = DRFAPIClient()
+        response = self.client.post(
+            "/api/auth/login/",
+            {"username": "partadmin", "password": "SecurePass123!"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, f"Login failed: {response.data}")
+        token = response.data["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.base_url = f"/api/parts/{self.part.pk}/upload-model/"
+
+    def test_upload_part_model_returns_200(self):
+        model_file = SimpleUploadedFile(
+            "sample.glb",
+            b"glTF placeholder content",
+            content_type="model/gltf-binary",
+        )
+
+        response = self.client.post(
+            self.base_url,
+            {"model_file": model_file},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("model_file_url", response.data)
+
+        self.part.refresh_from_db()
+        self.assertTrue(self.part.model_file.name.startswith("part_models/"))
+        self.assertTrue(self.part.model_file.name.endswith("sample.glb"))
+
+    def test_upload_part_model_rejects_invalid_extension(self):
+        model_file = SimpleUploadedFile(
+            "sample.txt",
+            b"not a 3d model",
+            content_type="text/plain",
+        )
+
+        response = self.client.post(
+            self.base_url,
+            {"model_file": model_file},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 400)
 
 
 class WorkOrderExecutionModelTests(TestCase):

@@ -36,6 +36,7 @@ class Part(models.Model):
     sku = models.CharField(max_length=50, unique=True, help_text="Stock Keeping Unit")
     description = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    model_file = models.FileField(upload_to='part_models/', blank=True, null=True, help_text="3D model file for the part")
 
     def __str__(self):
         return f"{self.name} ({self.sku})"

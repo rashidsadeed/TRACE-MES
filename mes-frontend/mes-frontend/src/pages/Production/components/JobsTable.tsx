@@ -298,7 +298,7 @@ const JobsTable: React.FC<JobsTableProps> = ({
           </Col>
           <Col xs={24} lg={10}>
             <Title level={5} style={styles.sectionTitle}>Digital Twin</Title>
-            <ProductVisualizer status={record.status} />
+            <ProductVisualizer status={record.status} modelUrl={record.modelUrl} />
             <div style={styles.visualizerFooter}>Interactive 3D Model • Rotate to inspect</div>
           </Col>
         </Row>

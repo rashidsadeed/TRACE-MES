@@ -8,6 +8,7 @@ from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.views import APIView
 
@@ -24,6 +25,7 @@ from .models import (
 )
 from .serializers import (
     MachineSerializer,
+    PartModelUploadSerializer,
     PartSerializer,
     ProductionLineSerializer,
     ProductionLineWriteSerializer,
@@ -76,6 +78,35 @@ class PartViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         # POST / PATCH require parts.manage permission (staff users pass automatically)
         return [require_permission('parts.manage')()]
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='upload-model',
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def upload_model(self, request, pk=None):
+        """Upload or replace the 3D model file for a part."""
+        part = self.get_object()
+        serializer = PartModelUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        before_data = PartSerializer(part, context={'request': request}).data
+
+        part.model_file = serializer.validated_data['model_file']
+        part.save(update_fields=['model_file'])
+
+        after_data = PartSerializer(part, context={'request': request}).data
+        log_action(
+            actor=request.user,
+            action="UPLOAD_PART_MODEL",
+            entity_type="Part",
+            entity_id=part.pk,
+            before=before_data,
+            after=after_data,
+            request=request,
+        )
+        return Response(after_data, status=status.HTTP_200_OK)
 
 
 class WorkOrderViewSet(viewsets.ModelViewSet):
