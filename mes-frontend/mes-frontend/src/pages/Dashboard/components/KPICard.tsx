@@ -8,10 +8,11 @@ interface KPICardProps {
   data: KPIData;
   onClick?: () => void;
   highlight?: boolean;
+  invertTrend?: boolean;
 }
 
-const KPICard: React.FC<KPICardProps> = React.memo(({ data, onClick, highlight }) => {
-  const trendColor = getTrendColor(data.trend);
+const KPICard: React.FC<KPICardProps> = React.memo(({ data, onClick, highlight, invertTrend }) => {
+  const trendColor = getTrendColor(data.trend, invertTrend);
   const TrendIcon = data.trend === "up" ? ArrowUpOutlined : ArrowDownOutlined;
   const clickable = Boolean(onClick);
 
@@ -50,3 +51,4 @@ const KPICard: React.FC<KPICardProps> = React.memo(({ data, onClick, highlight }
 KPICard.displayName = "KPICard";
 
 export default KPICard;
+

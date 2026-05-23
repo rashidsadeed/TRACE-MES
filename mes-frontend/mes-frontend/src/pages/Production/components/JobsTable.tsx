@@ -316,7 +316,6 @@ const JobsTable: React.FC<JobsTableProps> = ({
       expandable={{
         expandedRowRender,
         expandRowByClick: true,
-        rowExpandable: (record) => record.status !== "Completed",
       }}
     />
   );

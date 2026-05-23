@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Row, Col, Typography } from "antd";
+import { Row, Col, Typography, Button, Tag } from "antd";
 import { KPICard, MachineTable, MachineDetailDrawer, AlertMachinesModal } from "./components";
 import { useLiveTelemetry } from "./hooks/useLiveTelemetry";
 import { styles } from "./styles";
 import { getKPIs, getMachineLogs, getMachineDetail, getMachineErrorLogs, resetMachineAlarm } from "../../services/dashboardService";
-import type { KPIData, MachineLog, MachineDetail, ErrorLog } from "./types";
+import type { KPIData, MachineLog, MachineDetail, ErrorLog, MachineStatus } from "./types";
 import {
   RocketOutlined,
   ThunderboltOutlined,
   ToolOutlined,
   AlertOutlined,
+  FilterOutlined,
+  CloseCircleOutlined,
 } from "@ant-design/icons";
 
 const { Title } = Typography;
@@ -22,6 +24,30 @@ const KPI_ICON_MAP: Record<string, React.ReactNode> = {
   alerts: <AlertOutlined style={{ color: "#ff4d4f", fontSize: 24 }} />,
 };
 
+/** KPI keys that should invert trend color (up = bad) */
+const INVERT_TREND_KEYS = new Set(["alerts"]);
+
+/** Filter definitions for each KPI card */
+type KPIFilter = {
+  label: string;
+  predicate: (m: MachineLog) => boolean;
+};
+
+const KPI_FILTER_MAP: Record<string, KPIFilter> = {
+  production: {
+    label: "Running Machines",
+    predicate: (m) => m.status === "Running",
+  },
+  machines: {
+    label: "Active Machines",
+    predicate: (m) => m.status === "Running" || m.status === "Idle",
+  },
+  alerts: {
+    label: "Error / Maintenance",
+    predicate: (m) => m.status === "Error" || m.status === "Maintenance",
+  },
+};
+
 const Dashboard: React.FC = () => {
   const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
   const [kpiData, setKpiData] = useState<KPIData[]>([]);
@@ -29,6 +55,7 @@ const Dashboard: React.FC = () => {
   const [detail, setDetail] = useState<MachineDetail | null>(null);
   const [errorLogs, setErrorLogs] = useState<ErrorLog[]>([]);
   const [alertsModalOpen, setAlertsModalOpen] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<string | null>(null);
 
   const { data: telemetryData, latest: latestTelemetry } = useLiveTelemetry(selectedMachine);
 
@@ -40,6 +67,12 @@ const Dashboard: React.FC = () => {
       ),
     [machineLogData],
   );
+
+  // Apply active filter to machine logs
+  const filteredMachineLogData = useMemo(() => {
+    if (!activeFilter || !KPI_FILTER_MAP[activeFilter]) return machineLogData;
+    return machineLogData.filter(KPI_FILTER_MAP[activeFilter].predicate);
+  }, [machineLogData, activeFilter]);
 
   // Fetch data from service — poll every 3s for live updates
   useEffect(() => {
@@ -91,6 +124,20 @@ const Dashboard: React.FC = () => {
     setErrorLogs(updatedLogs);
   }, []);
 
+  const handleKPIClick = useCallback((key: string) => {
+    if (key === "alerts") {
+      setAlertsModalOpen(true);
+      return;
+    }
+    if (KPI_FILTER_MAP[key]) {
+      setActiveFilter((prev) => (prev === key ? null : key));
+    }
+  }, []);
+
+  const clearFilter = useCallback(() => {
+    setActiveFilter(null);
+  }, []);
+
   return (
     <div>
       {/* Header */}
@@ -105,22 +152,42 @@ const Dashboard: React.FC = () => {
       <Row gutter={[24, 24]}>
         {kpiData.map((kpi) => {
           const isAlerts = kpi.key === "alerts";
+          const isClickable = isAlerts || Boolean(KPI_FILTER_MAP[kpi.key]);
           return (
             <Col xs={24} sm={12} lg={6} key={kpi.key}>
               <KPICard
                 data={kpi}
-                onClick={isAlerts ? () => setAlertsModalOpen(true) : undefined}
-                highlight={isAlerts && alertMachines.length > 0}
+                onClick={isClickable ? () => handleKPIClick(kpi.key) : undefined}
+                highlight={
+                  (isAlerts && alertMachines.length > 0) ||
+                  activeFilter === kpi.key
+                }
+                invertTrend={INVERT_TREND_KEYS.has(kpi.key)}
               />
             </Col>
           );
         })}
       </Row>
 
+      {/* Active Filter Indicator */}
+      {activeFilter && KPI_FILTER_MAP[activeFilter] && (
+        <div style={{ marginTop: 16, marginBottom: -8 }}>
+          <Tag
+            icon={<FilterOutlined />}
+            color="blue"
+            closable
+            onClose={clearFilter}
+            style={{ fontSize: 13, padding: "4px 12px" }}
+          >
+            Filtered: {KPI_FILTER_MAP[activeFilter].label}
+          </Tag>
+        </div>
+      )}
+
       {/* Machine Logs */}
       <Row style={styles.tableSection}>
         <Col span={24}>
-          <MachineTable data={machineLogData} onViewDetail={handleViewDetail} />
+          <MachineTable data={filteredMachineLogData} onViewDetail={handleViewDetail} />
         </Col>
       </Row>
 

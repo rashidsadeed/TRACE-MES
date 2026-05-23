@@ -4,6 +4,10 @@
  * Singleton that holds mutable state for all 10 machines.
  * Updates temperatures, production counters, and telemetry
  * every tick (1s) so all pages see the same live data.
+ *
+ * Also manages Work Order and Order Request state so that
+ * mock-mode mutations (create, decline, delete) persist
+ * across page navigations within the same session.
  */
 
 import type {
@@ -13,6 +17,8 @@ import type {
   MockMachineDetail,
   MockMachineLog,
   MockKPIData,
+  MockWorkOrder,
+  MockOrderRequest,
   MachineStatus,
   CNCStatus,
 } from "./mockData";
@@ -23,6 +29,8 @@ import {
   MOCK_MACHINE_DETAILS,
   MOCK_TELEMETRY_BASE,
   MOCK_ERROR_LOGS,
+  MOCK_WORK_ORDERS,
+  MOCK_ORDER_REQUESTS,
 } from "./mockData";
 
 /* ------------------------------------------------------------------ */
@@ -90,13 +98,18 @@ class MockSimulator {
   private states: Map<string, LiveMachineState> = new Map();
   private jobs: MockProductionJob[];
   private lines: MockProductionLine[];
+  private workOrders: MockWorkOrder[];
+  private orderRequests: MockOrderRequest[];
   private started = false;
   private intervalId: ReturnType<typeof setInterval> | null = null;
+  private nextJobKey = 100;
 
   constructor() {
     // Deep clone initial data
     this.jobs = structuredClone(MOCK_JOBS);
     this.lines = structuredClone(MOCK_LINES);
+    this.workOrders = structuredClone(MOCK_WORK_ORDERS);
+    this.orderRequests = structuredClone(MOCK_ORDER_REQUESTS);
 
     for (const m of structuredClone(MOCK_MACHINES)) {
       const profile = PROFILES[m.id] ?? {
@@ -119,7 +132,7 @@ class MockSimulator {
     this.intervalId = setInterval(() => this.tick(), 1000);
   }
 
-  stop() {
+  stopSimulation() {
     if (this.intervalId) clearInterval(this.intervalId);
     this.started = false;
   }
@@ -155,7 +168,9 @@ class MockSimulator {
     }
   }
 
-  /* ---- Public API (used by services) ---- */
+  /* ==================================================================
+   *  READ — Production
+   * ================================================================== */
 
   getMachines(): MockMachine[] {
     return Array.from(this.states.values()).map((s) => ({ ...s.machine }));
@@ -168,6 +183,10 @@ class MockSimulator {
   getJobs(): MockProductionJob[] {
     return structuredClone(this.jobs);
   }
+
+  /* ==================================================================
+   *  READ — Dashboard
+   * ================================================================== */
 
   getMachineLogs(): MockMachineLog[] {
     return Array.from(this.states.values()).map((s) => ({
@@ -244,6 +263,121 @@ class MockSimulator {
 
   getErrorLogs(machineId: string) {
     return structuredClone(MOCK_ERROR_LOGS[machineId] ?? []);
+  }
+
+  /* ==================================================================
+   *  READ — Work Orders
+   * ================================================================== */
+
+  getWorkOrders(): MockWorkOrder[] {
+    return structuredClone(this.workOrders);
+  }
+
+  getOrderRequests(): MockOrderRequest[] {
+    return structuredClone(this.orderRequests);
+  }
+
+  /* ==================================================================
+   *  WRITE — Production Jobs
+   * ================================================================== */
+
+  runJob(jobId: string) {
+    const job = this.jobs.find((j) => j.key === jobId);
+    if (job) {
+      job.status = "Running";
+      this.updateMachineStatusForJob(job, "In Use");
+    }
+  }
+
+  cancelJob(jobId: string) {
+    const job = this.jobs.find((j) => j.key === jobId);
+    if (job) {
+      job.status = "Stopped";
+      this.updateMachineStatusForJob(job, "Available");
+    }
+  }
+
+  stopJob(jobId: string) {
+    const job = this.jobs.find((j) => j.key === jobId);
+    if (job) {
+      job.status = "Stopped";
+      this.updateMachineStatusForJob(job, "Available");
+    }
+  }
+
+  /** Emergency stop — stops ALL running jobs and frees all machines */
+  stopAll() {
+    for (const job of this.jobs) {
+      if (job.status === "Running") {
+        job.status = "Stopped";
+        this.updateMachineStatusForJob(job, "Available");
+      }
+    }
+  }
+
+  /** Add a new job to the jobs list */
+  addJob(job: MockProductionJob) {
+    this.jobs.push(structuredClone(job));
+  }
+
+  /* ==================================================================
+   *  WRITE — Dashboard
+   * ================================================================== */
+
+  /** Reset machine alarm — moves Error → Available */
+  resetMachineAlarm(machineId: string) {
+    const state = this.states.get(machineId);
+    if (state && state.machine.status === "Error") {
+      state.machine.status = "Available";
+      state.temp = 25; // cool down
+      state.machine.temp = 25;
+    }
+  }
+
+  /* ==================================================================
+   *  WRITE — Work Orders
+   * ================================================================== */
+
+  /** Create a new work order and add it to the list */
+  createWorkOrder(order: MockWorkOrder) {
+    this.workOrders.push(structuredClone(order));
+  }
+
+  /** Delete (cancel) a work order — set status to Declined */
+  deleteWorkOrder(orderId: string) {
+    const wo = this.workOrders.find((w) => w.key === orderId);
+    if (wo) {
+      wo.status = "Delayed"; // maps to CANCELLED on backend
+    }
+  }
+
+  /** Accept an order request — remove from requests, add as work order */
+  acceptRequest(requestKey: string, order: MockWorkOrder) {
+    this.orderRequests = this.orderRequests.filter((r) => r.key !== requestKey);
+    this.workOrders.push(structuredClone(order));
+  }
+
+  /** Decline an order request — remove from requests */
+  declineRequest(requestKey: string) {
+    this.orderRequests = this.orderRequests.filter((r) => r.key !== requestKey);
+  }
+
+  /* ==================================================================
+   *  Private Helpers
+   * ================================================================== */
+
+  private updateMachineStatusForJob(job: MockProductionJob, status: MachineStatus) {
+    const mIds = [...(job.assignedMachineIds ?? [])];
+    if (job.lineId) {
+      const line = this.lines.find(l => l.id === job.lineId);
+      if (line) mIds.push(...line.machineIds);
+    }
+    for (const mId of mIds) {
+      const state = this.states.get(mId);
+      if (state && (state.machine.status === "In Use" || state.machine.status === "Available")) {
+        state.machine.status = status;
+      }
+    }
   }
 }
 

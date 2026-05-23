@@ -243,9 +243,9 @@ export const useWorkOrders = () => {
   );
 
   const handleDeclineRequest = useCallback(
-    async (key: string) => {
+    async (key: string, reason?: string) => {
       try {
-        await workOrderService.declineRequest(key);
+        await workOrderService.declineRequest(key, reason);
         await fetchData();
         message.info("Request declined.");
       } catch (err) {

@@ -5,103 +5,159 @@
 GEREKSINIMLER:
   - Docker Desktop (kurulu ve acik olmali)
   - Node.js (v18+)
-  - Git Bash veya terminal
+  - Git Bash veya terminal (PowerShell / CMD de olur)
 
 ============================================================
-1. BACKEND BASLATMA (Docker)
+  PROJE DIZINI
 ============================================================
 
-Terminal ac, backend klasorune git:
+  Proje koku:  c:\Users\Taha\Projects\docker_version
 
-  cd "C:/Users/Taha/Projects/TRACE-MES/New Backend/TRACE-MES"
-
-Docker container'lari baslat:
-
-  docker compose up -d
-
-Kontrol et (3 container: web, db, redis gorunmeli):
-
-  docker compose ps
-
-API testi (401 donmesi = calisiyor demek):
-
-  curl http://localhost:8000/api/live/overview/
+  Yapisi:
+    docker_version/
+    ├── backend/            ← Django REST API
+    ├── mes-frontend/
+    │   └── mes-frontend/   ← Vite + React + Ant Design
+    ├── docker-compose.yaml
+    ├── .env                ← Backend icin ortam degiskenleri
+    └── NASIL_CALISTIRILIR.txt  (bu dosya)
 
 ============================================================
-2. TELEMETRI SIMULASYONU (Opsiyonel)
+  A) TAM KURULUM (Backend + Frontend + DB — Docker)
 ============================================================
 
-Makinelere canli veri akisi baslatmak icin (her biri ayri terminalde
-veya -d ile arka planda):
+  1. Docker Desktop'in acik oldugundan emin ol.
 
-  docker compose exec -d web python manage.py simulate_telemetry --machine cnc-001 --interval 2
-  docker compose exec -d web python manage.py simulate_telemetry --machine cnc-002 --interval 2
-  docker compose exec -d web python manage.py simulate_telemetry --machine press-001 --interval 2
-  docker compose exec -d web python manage.py simulate_telemetry --machine solder-001 --interval 3
-  docker compose exec -d web python manage.py simulate_telemetry --machine test-001 --interval 3
+  2. Proje kokune git:
 
-Veritabanini sifirdan doldurmak istersen:
+       cd "c:\Users\Taha\Projects\docker_version"
 
-  docker compose exec web python manage.py seed_factory
+  3. Docker container'lari baslat:
 
-============================================================
-3. FRONTEND BASLATMA
-============================================================
+       docker compose up -d
 
-Yeni terminal ac, frontend klasorune git:
+     Bu komut 4 servis ayaga kaldirir:
+       - backend  (Django, port 8000)
+       - frontend (Vite,   port 5173)
+       - db       (PostgreSQL, port 5432)
+       - redis    (port 6379)
 
-  cd "C:/Users/Taha/Projects/TRACE-MES/Taha_Kocak_fr/TRACE-MES/mes-frontend/mes-frontend"
+     Ilk calistirmada migrate + seed_factory otomatik calisir.
 
-Bagimliliklari kur (ilk seferde veya package.json degistiginde):
+  4. API testi (401 donmesi = calisiyor demek):
 
-  npm install
+       curl http://localhost:8000/api/live/overview/
 
-Gelistirme sunucusunu baslat:
+  5. Tarayicidan ac:
 
-  npx vite --host
-
-Cikti soyle gorunecek:
-
-  VITE v6.4.1  ready in 220 ms
-    Local:   http://localhost:5173/
-    Network: http://172.20.10.3:5173/
+       http://localhost:5173
 
 ============================================================
-4. GIRIS BILGILERI
+  B) SADECE FRONTEND (Mock Data — Backend Gerektirmez)
 ============================================================
 
-  Kullanici adi:  admin
-  Sifre:          admin123
+  Backend'i ayaga kaldirmadan sadece frontend'i mock
+  verileriyle calistirmak icin:
 
-  PC'den:         http://localhost:5173
-  Telefondan:     http://<bilgisayarin-ip>:5173
-                  (ayni Wi-Fi aginda olmali)
+  1. Frontend .env dosyasini duzenle:
+
+       Dosya: mes-frontend/mes-frontend/.env
+
+       Icerigi:
+         VITE_API_MODE=mock
+         VITE_API_BASE_URL=/api
+
+  2. Terminalde frontend klasorune git:
+
+       cd "c:\Users\Taha\Projects\docker_version\mes-frontend\mes-frontend"
+
+  3. Bagimliliklari kur (ilk seferde veya package.json degistiginde):
+
+       npm install
+
+  4. Dev sunucusunu baslat:
+
+       npx vite --host
+
+  5. Cikti soyle gorunecek:
+
+       VITE v6.4.1  ready in 400 ms
+         Local:   http://localhost:5173/
+         Network: http://192.168.x.x:5173/
+
+  6. Tarayicidan ac:
+
+       http://localhost:5173
+
+  NOT: Mock modda tum sayfalar (Dashboard, Production, Work Orders,
+  Live Map) simule edilmis verilerle calisir. Login gerekmez;
+  herhangi bir kullanici adi/sifre ile giris yapilabilir.
 
 ============================================================
-5. KAPATMA
+  C) SADECE BACKEND (Gercek API)
 ============================================================
 
-Frontend (Vite):
-  Terminal'de Ctrl+C bas
+  Frontend'i mock yerine gercek backend'e baglamak icin:
 
-Backend (Docker):
-  cd "C:/Users/Taha/Projects/TRACE-MES/New Backend/TRACE-MES"
-  docker compose down
+  1. Frontend .env dosyasini su sekilde ayarla:
+
+       VITE_API_MODE=real
+       VITE_API_BASE_URL=/api
+
+  2. docker compose up -d   ile backend'i baslat.
+
+  3. Frontend'i baslat (B bolumundeki adimlari takip et).
 
 ============================================================
-6. FAYDALI KOMUTLAR
+  GIRIS BILGILERI (Backend / Real Mode)
 ============================================================
 
-Backend loglarini gor:
-  docker compose logs -f web
+    Kullanici adi:  admin
+    Sifre:          admin123
 
-Migration uygula:
-  docker compose exec web python manage.py migrate
+    PC'den:         http://localhost:5173
+    Telefondan:     http://<bilgisayarin-ip>:5173
+                    (ayni Wi-Fi aginda olmali)
 
-Django shell:
-  docker compose exec web python manage.py shell
+============================================================
+  KAPATMA
+============================================================
 
-Yeni kullanici olustur:
-  docker compose exec web python manage.py createsuperuser
+  Frontend (Vite):
+    Terminal'de Ctrl+C bas
+
+  Backend (Docker):
+    cd "c:\Users\Taha\Projects\docker_version"
+    docker compose down
+
+  NOT: Veritabanini tamamen silip sifirdan baslatmak icin:
+    docker compose down -v
+    docker compose up -d
+
+============================================================
+  FAYDALI KOMUTLAR
+============================================================
+
+  Backend loglarini gor:
+    docker compose logs -f backend
+
+  Migration uygula:
+    docker compose exec backend python manage.py migrate
+
+  Django shell:
+    docker compose exec backend python manage.py shell
+
+  Veritabanini yeniden doldur:
+    docker compose exec backend python manage.py seed_factory
+
+  Yeni kullanici olustur:
+    docker compose exec backend python manage.py createsuperuser
+
+  Telemetri simulasyonu baslat:
+    docker compose exec -d backend python manage.py simulate_telemetry --machine cnc-001 --interval 2
+
+  TypeScript tip kontrolu (frontend):
+    cd mes-frontend/mes-frontend
+    npx tsc --noEmit
 
 ============================================================

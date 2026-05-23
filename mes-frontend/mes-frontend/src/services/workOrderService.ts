@@ -1,8 +1,7 @@
 import { isMockMode } from "./config";
 import apiClient from "./apiClient";
+import { simulator } from "./mockSimulator";
 import {
-  MOCK_WORK_ORDERS,
-  MOCK_ORDER_REQUESTS,
   MOCK_WO_LINES,
   MOCK_WO_MACHINES,
 } from "./mockData";
@@ -55,7 +54,7 @@ interface BackendExecutionMini {
 export const getWorkOrders = async (): Promise<MockWorkOrder[] | BackendWorkOrder[]> => {
   if (isMockMode()) {
     await delay();
-    return structuredClone(MOCK_WORK_ORDERS);
+    return simulator.getWorkOrders();
   }
   const [wosRes, execsRes] = await Promise.all([
     apiClient.get<BackendWorkOrder[]>("/workorders/"),
@@ -107,7 +106,7 @@ export const getWorkOrders = async (): Promise<MockWorkOrder[] | BackendWorkOrde
 export const getOrderRequests = async (): Promise<MockOrderRequest[]> => {
   if (isMockMode()) {
     await delay();
-    return structuredClone(MOCK_ORDER_REQUESTS);
+    return simulator.getOrderRequests();
   }
   // Backend does not have a separate "order requests" endpoint yet.
   // Pending work orders serve as order requests.
@@ -184,6 +183,7 @@ export const createWorkOrder = async (
 ): Promise<MockWorkOrder | BackendWorkOrder> => {
   if (isMockMode()) {
     await delay(200);
+    simulator.createWorkOrder(order as MockWorkOrder);
     return order as MockWorkOrder;
   }
   const { data } = await apiClient.post<BackendWorkOrder>("/workorders/", order);
@@ -193,6 +193,7 @@ export const createWorkOrder = async (
 export const deleteWorkOrder = async (orderId: string): Promise<void> => {
   if (isMockMode()) {
     await delay(200);
+    simulator.deleteWorkOrder(orderId);
     return;
   }
   // Backend does not support DELETE on workorders; PATCH status to CANCELLED instead
@@ -205,6 +206,7 @@ export const acceptRequest = async (
 ): Promise<MockWorkOrder | BackendWorkOrder> => {
   if (isMockMode()) {
     await delay(200);
+    simulator.acceptRequest(requestId, order as MockWorkOrder);
     return order as MockWorkOrder;
   }
   // "Accepting" a request = creating a new work order from it
@@ -212,11 +214,14 @@ export const acceptRequest = async (
   return data;
 };
 
-export const declineRequest = async (requestId: string): Promise<void> => {
+export const declineRequest = async (requestId: string, reason?: string): Promise<void> => {
   if (isMockMode()) {
     await delay(200);
+    simulator.declineRequest(requestId);
     return;
   }
-  // Decline = cancel the pending work order
-  await apiClient.patch(`/workorders/${requestId}/`, { status: "CANCELLED" });
+  // Decline = cancel the pending work order with optional reason
+  const payload: Record<string, string> = { status: "CANCELLED" };
+  if (reason) payload.decline_reason = reason;
+  await apiClient.patch(`/workorders/${requestId}/`, payload);
 };

@@ -1,6 +1,6 @@
 import React from "react";
-import { Modal, Table, Tag, Badge, Empty, Typography, Progress } from "antd";
-import { AlertOutlined } from "@ant-design/icons";
+import { Modal, Table, Tag, Badge, Empty, Typography, Progress, Button } from "antd";
+import { AlertOutlined, EyeOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { Machine } from "../types";
 import { MACHINE_STATUS_CONFIG, MACHINE_TYPE_COLOR } from "../constants";
@@ -11,6 +11,7 @@ interface ErrorMachinesModalProps {
   open: boolean;
   machines: Machine[];
   onClose: () => void;
+  onViewMachine?: (machineId: string) => void;
 }
 
 const getTempColor = (temp: number): string => {
@@ -23,6 +24,7 @@ const ErrorMachinesModal: React.FC<ErrorMachinesModalProps> = ({
   open,
   machines,
   onClose,
+  onViewMachine,
 }) => {
   const columns: ColumnsType<Machine> = [
     {
@@ -80,6 +82,27 @@ const ErrorMachinesModal: React.FC<ErrorMachinesModalProps> = ({
       dataIndex: "lastMaint",
       key: "lastMaint",
     },
+    ...(onViewMachine
+      ? [
+          {
+            title: "Action",
+            key: "action",
+            render: (_: unknown, record: Machine) => (
+              <Button
+                type="link"
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={() => {
+                  onClose();
+                  onViewMachine(record.id);
+                }}
+              >
+                Go to Machine
+              </Button>
+            ),
+          } as const,
+        ]
+      : []),
   ];
 
   return (
@@ -87,7 +110,7 @@ const ErrorMachinesModal: React.FC<ErrorMachinesModalProps> = ({
       open={open}
       onCancel={onClose}
       footer={null}
-      width={820}
+      width={920}
       title={
         <span>
           <AlertOutlined style={{ color: "#ff4d4f", marginRight: 8 }} />
@@ -103,8 +126,8 @@ const ErrorMachinesModal: React.FC<ErrorMachinesModalProps> = ({
       ) : (
         <>
           <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
-            The machines below have halted due to errors. Stop the related jobs
-            or dispatch maintenance to bring them back online.
+            The machines below have halted due to errors. Click "Go to Machine" to
+            navigate to the machine in the Machines tab.
           </Text>
           <Table<Machine>
             columns={columns}

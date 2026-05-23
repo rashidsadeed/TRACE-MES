@@ -13,6 +13,7 @@ const STATUS_RANK: Record<OrderStatus, number> = {
   Pending: 1,
   Delayed: 2,
   Completed: 3,
+  Declined: 4,
 };
 
 const { Text } = Typography;
@@ -139,12 +140,17 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
             record.quantity > 0
               ? Math.round((record.completed / record.quantity) * 100)
               : 0;
+          const progressStatus = percent >= 100
+            ? "success"
+            : record.status === "Delayed"
+              ? "exception"
+              : "active";
           return (
             <Tooltip title={`${record.completed} / ${record.quantity} units`}>
               <Progress
                 percent={percent}
                 size="small"
-                status={record.status === "Delayed" ? "exception" : "active"}
+                status={progressStatus}
               />
             </Tooltip>
           );

@@ -279,6 +279,7 @@ export const getMachineErrorLogs = async (machineId: string): Promise<MockErrorL
 export const resetMachineAlarm = async (machineId: string): Promise<void> => {
   if (isMockMode()) {
     await delay(500);
+    simulator.resetMachineAlarm(machineId);
     return;
   }
   // Set machine status to IDLE via PATCH

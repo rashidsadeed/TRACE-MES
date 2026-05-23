@@ -3,6 +3,7 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   SyncOutlined,
+  CloseCircleOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type {
@@ -20,6 +21,7 @@ export const STATUS_CONFIG: Record<
   "In Progress": { icon: <SyncOutlined spin />, color: "processing" },
   Completed: { icon: <CheckCircleOutlined />, color: "success" },
   Delayed: { icon: <ClockCircleOutlined />, color: "error" },
+  Declined: { icon: <CloseCircleOutlined />, color: "default" },
 };
 
 // --- Priority color mapping ---

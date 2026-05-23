@@ -49,9 +49,13 @@ export const styles: Record<string, React.CSSProperties> = {
 
 /**
  * Returns trend color based on direction.
+ * When `invertColor` is true the semantics are flipped — useful for metrics
+ * where "up" is bad (e.g. Active Alerts).
  */
-export const getTrendColor = (trend: "up" | "down"): string =>
-  trend === "up" ? "#52c41a" : "#ff4d4f";
+export const getTrendColor = (trend: "up" | "down", invertColor = false): string => {
+  if (invertColor) return trend === "up" ? "#ff4d4f" : "#52c41a";
+  return trend === "up" ? "#52c41a" : "#ff4d4f";
+};
 
 /**
  * Returns temp bar color based on threshold.

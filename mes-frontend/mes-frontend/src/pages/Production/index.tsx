@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import {
   Button,
   Space,
@@ -9,6 +9,7 @@ import {
   Row,
   Col,
   Statistic,
+  Tag,
 } from "antd";
 import {
   PlusOutlined,
@@ -16,6 +17,7 @@ import {
   DashboardOutlined,
   ToolOutlined,
   AlertOutlined,
+  FilterOutlined,
 } from "@ant-design/icons";
 import { useProduction } from "./hooks/useProduction";
 import {
@@ -32,6 +34,16 @@ import {
 import { styles } from "./styles";
 
 const { Title } = Typography;
+
+/** Filter types for the Quick Stats cards */
+type QuickFilter = "running" | "scheduled" | "available" | "error" | null;
+
+const FILTER_LABELS: Record<string, string> = {
+  running: "Running Jobs",
+  scheduled: "Scheduled Jobs",
+  available: "Available Machines",
+  error: "Machine Errors",
+};
 
 const Production: React.FC = () => {
   const {
@@ -68,11 +80,50 @@ const Production: React.FC = () => {
   } = useProduction();
 
   const [errorModalOpen, setErrorModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("jobs");
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>(null);
 
   const erroredMachines = useMemo(
     () => machines.filter((m) => m.status === "Error"),
     [machines],
   );
+
+  // Apply quick filter to jobs
+  const filteredJobs = useMemo(() => {
+    if (quickFilter === "running") return jobs.filter((j) => j.status === "Running");
+    if (quickFilter === "scheduled") return jobs.filter((j) => j.status === "Scheduled");
+    return jobs;
+  }, [jobs, quickFilter]);
+
+  // Apply quick filter to machines
+  const filteredMachines = useMemo(() => {
+    if (quickFilter === "available") return machines.filter((m) => m.status === "Available");
+    if (quickFilter === "error") return machines.filter((m) => m.status === "Error");
+    return machines;
+  }, [machines, quickFilter]);
+
+  const handleQuickFilterClick = useCallback((filter: QuickFilter) => {
+    setQuickFilter((prev) => {
+      if (prev === filter) return null; // Toggle off
+      // Switch to the appropriate tab
+      if (filter === "running" || filter === "scheduled") {
+        setActiveTab("jobs");
+      } else if (filter === "available" || filter === "error") {
+        setActiveTab("machines");
+      }
+      return filter;
+    });
+  }, []);
+
+  const clearFilter = useCallback(() => {
+    setQuickFilter(null);
+  }, []);
+
+  // Navigate to a specific machine in the Machines tab
+  const handleViewErrorMachine = useCallback((machineId: string) => {
+    setActiveTab("machines");
+    setQuickFilter("error");
+  }, []);
 
   const tabItems = [
     {
@@ -84,7 +135,7 @@ const Production: React.FC = () => {
       ),
       children: (
         <JobsTable
-          jobs={jobs}
+          jobs={filteredJobs}
           getLineName={getLineName}
           getMachinesForLine={getMachinesForLine}
           getMachinesByIds={getMachinesByIds}
@@ -112,7 +163,7 @@ const Production: React.FC = () => {
           <ToolOutlined /> Machines ({machines.length})
         </span>
       ),
-      children: <MachinesTable machines={machines} />,
+      children: <MachinesTable machines={filteredMachines} />,
     },
   ];
 
@@ -159,7 +210,17 @@ const Production: React.FC = () => {
       {/* Quick Stats */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col xs={12} sm={6}>
-          <Card bordered={false} size="small">
+          <Card
+            bordered={false}
+            size="small"
+            hoverable
+            onClick={() => handleQuickFilterClick("running")}
+            style={{
+              cursor: "pointer",
+              border: quickFilter === "running" ? "1px solid #b7eb8f" : undefined,
+              background: quickFilter === "running" ? "#f6ffed" : undefined,
+            }}
+          >
             <Statistic
               title="Running Jobs"
               value={stats.jobs.running}
@@ -168,7 +229,17 @@ const Production: React.FC = () => {
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card bordered={false} size="small">
+          <Card
+            bordered={false}
+            size="small"
+            hoverable
+            onClick={() => handleQuickFilterClick("scheduled")}
+            style={{
+              cursor: "pointer",
+              border: quickFilter === "scheduled" ? "1px solid #91d5ff" : undefined,
+              background: quickFilter === "scheduled" ? "#e6f7ff" : undefined,
+            }}
+          >
             <Statistic
               title="Scheduled"
               value={stats.jobs.scheduled}
@@ -177,7 +248,17 @@ const Production: React.FC = () => {
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card bordered={false} size="small">
+          <Card
+            bordered={false}
+            size="small"
+            hoverable
+            onClick={() => handleQuickFilterClick("available")}
+            style={{
+              cursor: "pointer",
+              border: quickFilter === "available" ? "1px solid #d9d9d9" : undefined,
+              background: quickFilter === "available" ? "#fafafa" : undefined,
+            }}
+          >
             <Statistic
               title="Available Machines"
               value={stats.machines.available}
@@ -218,9 +299,24 @@ const Production: React.FC = () => {
         </Col>
       </Row>
 
+      {/* Active Filter Indicator */}
+      {quickFilter && (
+        <div style={{ marginBottom: 16 }}>
+          <Tag
+            icon={<FilterOutlined />}
+            color="blue"
+            closable
+            onClose={clearFilter}
+            style={{ fontSize: 13, padding: "4px 12px" }}
+          >
+            Filtered: {FILTER_LABELS[quickFilter]}
+          </Tag>
+        </div>
+      )}
+
       {/* Tabbed Content */}
       <Card bordered={false} style={styles.cardShadow}>
-        <Tabs defaultActiveKey="jobs" items={tabItems} />
+        <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
       </Card>
 
       {/* Modal: Start New Job */}
@@ -267,6 +363,7 @@ const Production: React.FC = () => {
         open={errorModalOpen}
         machines={erroredMachines}
         onClose={() => setErrorModalOpen(false)}
+        onViewMachine={handleViewErrorMachine}
       />
     </div>
   );

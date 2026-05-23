@@ -3,7 +3,7 @@ import type { Dayjs } from "dayjs";
 // --- Domain Types ---
 
 export type Priority = "High" | "Normal" | "Low";
-export type OrderStatus = "Pending" | "In Progress" | "Completed" | "Delayed";
+export type OrderStatus = "Pending" | "In Progress" | "Completed" | "Delayed" | "Declined";
 export type AssignmentType = "existing-line" | "machine" | "custom-line";
 
 export interface WorkOrder {

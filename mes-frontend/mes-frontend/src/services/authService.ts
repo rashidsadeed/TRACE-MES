@@ -70,7 +70,7 @@ export const login = async (
   if (isMockMode()) {
     await delay(500);
     const user = MOCK_USERS.find((u) => u.username === username);
-    if (!user || password !== username) {
+    if (!user || password !== "admin123") {
       throw new Error("Invalid username or password");
     }
     const token = `mock-jwt-${Date.now()}`;

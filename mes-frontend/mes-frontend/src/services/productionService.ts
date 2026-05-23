@@ -226,7 +226,9 @@ export const getPendingOrders = async (): Promise<MockPendingOrder[]> => {
 export const createJob = async (job: MockProductionJob): Promise<MockProductionJob> => {
   if (isMockMode()) {
     await delay(200);
-    return job;
+    const newJob = { ...job, status: "Scheduled" as const };
+    simulator.addJob(newJob);
+    return newJob;
   }
   // Creating a job = starting an execution
   const { data } = await apiClient.post<BackendExecution>("/executions/start/", {
@@ -244,6 +246,7 @@ export const createJob = async (job: MockProductionJob): Promise<MockProductionJ
 export const runJob = async (jobId: string): Promise<void> => {
   if (isMockMode()) {
     await delay(200);
+    simulator.runJob(jobId);
     return;
   }
   await apiClient.post(`/executions/${jobId}/resume/`);
@@ -252,6 +255,7 @@ export const runJob = async (jobId: string): Promise<void> => {
 export const cancelJob = async (jobId: string): Promise<void> => {
   if (isMockMode()) {
     await delay(200);
+    simulator.cancelJob(jobId);
     return;
   }
   // No explicit cancel on executions — just stop it
@@ -261,6 +265,7 @@ export const cancelJob = async (jobId: string): Promise<void> => {
 export const stopJob = async (jobId: string): Promise<void> => {
   if (isMockMode()) {
     await delay(200);
+    simulator.stopJob(jobId);
     return;
   }
   await apiClient.post(`/executions/${jobId}/stop/`);
@@ -269,6 +274,7 @@ export const stopJob = async (jobId: string): Promise<void> => {
 export const stopAll = async (): Promise<void> => {
   if (isMockMode()) {
     await delay(200);
+    simulator.stopAll();
     return;
   }
   // No batch emergency stop in backend. This is a best-effort operation.
@@ -286,7 +292,9 @@ export const acceptOrder = async (
 ): Promise<MockProductionJob> => {
   if (isMockMode()) {
     await delay(200);
-    return job;
+    const newJob = { ...job, status: "Scheduled" as const };
+    simulator.addJob(newJob);
+    return newJob;
   }
   // Accept = start an execution (goes to AWAITING_START)
   const { data } = await apiClient.post<BackendExecution>("/executions/start/", {
