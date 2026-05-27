@@ -17,6 +17,7 @@ import {
   Button,
   message,
   Empty,
+  Spin,
 } from "antd";
 import {
   CodeOutlined,
@@ -134,7 +135,20 @@ const MachineDetailDrawer: React.FC<MachineDetailDrawerProps> = ({
 }) => {
   const [resetting, setResetting] = useState(false);
 
-  if (!detail) return null;
+  if (!detail) {
+    return (
+      <Drawer
+        title={null}
+        placement="right"
+        width={720}
+        open={open}
+        onClose={onClose}
+        styles={{ body: { padding: 40, display: "flex", justifyContent: "center", alignItems: "center" } }}
+      >
+        <Spin size="large" tip="Loading details..." />
+      </Drawer>
+    );
+  }
 
   const { production, activeTool, override } = detail;
   const { partCounter } = production;

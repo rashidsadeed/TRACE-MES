@@ -35,10 +35,10 @@ const AssignmentFields: React.FC<AssignmentFieldsProps> = ({
         label="Production Line"
         rules={[{ required: true, message: "Select a line" }]}
       >
-        <Select placeholder="Select an existing line">
+        <Select placeholder="Select an existing line" optionLabelProp="label">
           {lines.map((line) => (
-            <Select.Option key={line.id} value={line.id} disabled={line.status === "Active"}>
-              {line.id} — {line.name}
+            <Select.Option key={line.id} value={line.id} disabled={line.status === "Active"} label={line.name}>
+              {line.name}
               {line.status === "Active" && " (busy)"}
               {line.isCustom && " ★ custom"}
             </Select.Option>
@@ -59,18 +59,18 @@ const AssignmentFields: React.FC<AssignmentFieldsProps> = ({
           placeholder="Pick available machines"
           optionLabelProp="label"
         >
-          {availableMachines.map((m) => (
-            <Select.Option key={m.id} value={m.id} label={m.id}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span>
-                  {m.id} — {m.name}
-                </span>
-                <Tag color={MACHINE_TYPE_COLOR[m.type]} style={{ marginLeft: 8 }}>
-                  {m.type}
-                </Tag>
-              </div>
-            </Select.Option>
-          ))}
+          {availableMachines.map((m) => {
+            const tag = <Tag color={MACHINE_TYPE_COLOR[m.type]} style={{ marginRight: 8 }}>{m.type}</Tag>;
+            const labelNode = <span>{tag} {m.name}</span>;
+            return (
+              <Select.Option key={m.id} value={m.id} label={labelNode}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>{m.name}</span>
+                  {tag}
+                </div>
+              </Select.Option>
+            );
+          })}
         </Select>
       </Form.Item>
     )}
@@ -95,18 +95,18 @@ const AssignmentFields: React.FC<AssignmentFieldsProps> = ({
             placeholder="Build your line from available machines"
             optionLabelProp="label"
           >
-            {availableMachines.map((m) => (
-              <Select.Option key={m.id} value={m.id} label={m.id}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>
-                    {m.id} — {m.name}
-                  </span>
-                  <Tag color={MACHINE_TYPE_COLOR[m.type]} style={{ marginLeft: 8 }}>
-                    {m.type}
-                  </Tag>
-                </div>
-              </Select.Option>
-            ))}
+            {availableMachines.map((m) => {
+              const tag = <Tag color={MACHINE_TYPE_COLOR[m.type]} style={{ marginRight: 8 }}>{m.type}</Tag>;
+              const labelNode = <span>{tag} {m.name}</span>;
+              return (
+                <Select.Option key={m.id} value={m.id} label={labelNode}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>{m.name}</span>
+                    {tag}
+                  </div>
+                </Select.Option>
+              );
+            })}
           </Select>
         </Form.Item>
       </>

@@ -77,7 +77,7 @@ const LiveMapCanvas: React.FC = () => {
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: MachineNodeType) => {
-      setSelectedMachine(node.data.displayId);
+      setSelectedMachine(node.data.machineId);
     },
     [],
   );

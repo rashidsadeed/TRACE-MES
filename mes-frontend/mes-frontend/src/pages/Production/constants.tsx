@@ -29,9 +29,10 @@ export const JOB_STATUS_CONFIG: Record<
 > = {
   Running: { icon: <PlayCircleOutlined />, color: "success" },
   Paused: { icon: <PauseCircleOutlined />, color: "warning" },
-  Scheduled: { icon: <ClockCircleOutlined />, color: "processing" },
+  Waiting: { icon: <ClockCircleOutlined />, color: "processing" },
   Stopped: { icon: <StopOutlined />, color: "error" },
   Completed: { icon: <CheckCircleOutlined />, color: "default" },
+    Cancelled: { icon: <StopOutlined />, color: "default" },
 };
 
 export const MACHINE_STATUS_CONFIG: Record<
@@ -64,10 +65,11 @@ export const PRIORITY_RANK: Record<"High" | "Normal" | "Low", number> = {
 
 export const JOB_STATUS_RANK: Record<JobStatus, number> = {
   Running: 0,
-  Scheduled: 1,
+  Waiting: 1,
   Paused: 2,
   Stopped: 3,
   Completed: 4,
+    Cancelled: 5,
 };
 
 export const MACHINE_TYPE_COLOR: Record<MachineType, string> = {
@@ -267,7 +269,7 @@ export const INITIAL_JOBS: ProductionJob[] = [
     productName: "Housing Unit A",
     assignmentType: "existing-line",
     lineId: "LINE-03",
-    status: "Scheduled",
+    status: "Waiting",
     targetQty: 1000,
     actualQty: 0,
     startTime: "-",

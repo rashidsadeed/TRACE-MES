@@ -67,7 +67,7 @@ const AcceptOrderModal: React.FC<AcceptOrderModalProps> = ({
 
   return (
     <Modal
-      title={`Assign Order: ${order?.orderId ?? ""}`}
+      title={`Schedule Work Order: ${order?.orderId ?? ""}`}
       open={open}
       onCancel={onCancel}
       footer={null}

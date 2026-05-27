@@ -25,6 +25,7 @@ import {
   LinesTable,
   MachinesTable,
   StartJobModal,
+  EditJobModal,
   AcceptOrderModal,
   PendingOrdersModal,
   NavbarPortal,
@@ -51,10 +52,12 @@ const Production: React.FC = () => {
     lines,
     jobs,
     pendingOrders,
+    parts,
     availableMachines,
     stats,
     modal,
     openStartJobModal,
+
     openPendingOrders,
     openAcceptOrderModal,
     closeModal,
@@ -64,6 +67,10 @@ const Production: React.FC = () => {
     handleAcceptOrder,
     handleRunJob,
     handleCancelJob,
+    openEditJobModal,
+    editJobForm,
+    handleEditJobSubmit,
+    handleCompleteJob,
     getLineName,
     getMachinesForLine,
     getMachinesByIds,
@@ -91,7 +98,7 @@ const Production: React.FC = () => {
   // Apply quick filter to jobs
   const filteredJobs = useMemo(() => {
     if (quickFilter === "running") return jobs.filter((j) => j.status === "Running");
-    if (quickFilter === "scheduled") return jobs.filter((j) => j.status === "Scheduled");
+    if (quickFilter === "scheduled") return jobs.filter((j) => j.status === "Waiting");
     return jobs;
   }, [jobs, quickFilter]);
 
@@ -134,7 +141,7 @@ const Production: React.FC = () => {
         </span>
       ),
       children: (
-        <JobsTable
+                <JobsTable
           jobs={filteredJobs}
           getLineName={getLineName}
           getMachinesForLine={getMachinesForLine}
@@ -142,6 +149,11 @@ const Production: React.FC = () => {
           onStartJob={handleRunJob}
           onStopJob={handleStopJob}
           onCancelJob={handleCancelJob}
+          onEditJob={(key) => {
+            const job = jobs.find((j) => j.key === key);
+            if (job) openEditJobModal(job);
+          }}
+          onCompleteJob={handleCompleteJob}
         />
       ),
     },
@@ -193,7 +205,7 @@ const Production: React.FC = () => {
         <Space>
           <Badge count={pendingOrders.length} offset={[-5, 5]}>
             <Button icon={<InboxOutlined />} onClick={openPendingOrders}>
-              Accept Order
+              Pull from Backlog
             </Button>
           </Badge>
           <Button
@@ -325,6 +337,7 @@ const Production: React.FC = () => {
         form={startJobForm}
         lines={lines}
         availableMachines={availableMachines}
+        parts={parts}
         onFinish={handleCreateJob}
         onCancel={closeModal}
         conflictMachines={conflictMachines}
@@ -340,6 +353,17 @@ const Production: React.FC = () => {
         orders={pendingOrders}
         onCancel={closeModal}
         onAssign={openAcceptOrderModal}
+      />
+
+            {/* Modal: Edit Job */}
+      <EditJobModal
+        open={modal.type === "editJob"}
+        form={editJobForm}
+        job={modal.type === "editJob" ? modal.job : null}
+        lines={lines}
+        availableMachines={availableMachines}
+        onFinish={handleEditJobSubmit}
+        onCancel={closeModal}
       />
 
       {/* Modal: Accept & Assign Order */}

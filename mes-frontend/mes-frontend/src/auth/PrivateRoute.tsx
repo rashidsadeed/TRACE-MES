@@ -25,4 +25,15 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   return <>{children}</>;
 };
 
+export const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const isCustomer = user?.role === "Customer" || user?.role?.toLowerCase() === "customer";
+
+  if (isCustomer) {
+    return <Navigate to="/customer/orders" replace />;
+  }
+
+  return <>{children}</>;
+};
+
 export default PrivateRoute;

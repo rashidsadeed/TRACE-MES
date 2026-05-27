@@ -13,6 +13,7 @@ import {
   MenuUnfoldOutlined,
   LogoutOutlined,
   RadarChartOutlined,
+  OrderedListOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../auth/AuthContext";
 
@@ -29,18 +30,28 @@ const MainLayout: React.FC = () => {
     token: { colorBgContainer, colorBgLayout },
   } = theme.useToken();
 
-  const menuItems: MenuProps["items"] = [
+  const isCustomer = user?.role === "Customer" || user?.role?.toLowerCase() === "customer";
+
+  const adminMenuItems: MenuProps["items"] = [
     { key: "/dashboard", icon: <DashboardOutlined />, label: "Dashboard" },
+    { key: "/order-requests", icon: <InboxOutlined />, label: "Orders" },
     {
       key: "/production",
       icon: <ExperimentOutlined />,
       label: "Productions",
     },
-    { key: "/work-orders", icon: <FileTextOutlined />, label: "Work Orders" },
+    { key: "/backlog", icon: <OrderedListOutlined />, label: "Backlog" },
     { key: "/live-map", icon: <RadarChartOutlined />, label: "Live Map" },
     { key: "/inventory", icon: <InboxOutlined />, label: "Inventory" },
     { key: "/settings", icon: <SettingOutlined />, label: "Settings" },
   ];
+
+  const customerMenuItems: MenuProps["items"] = [
+    { key: "/customer/orders", icon: <DashboardOutlined />, label: "My Orders" },
+    { key: "/customer/new-order", icon: <FileTextOutlined />, label: "New Order" },
+  ];
+
+  const menuItems = isCustomer ? customerMenuItems : adminMenuItems;
 
   const userMenuItems: MenuProps["items"] = [
     { key: "profile", label: "My Profile", icon: <UserOutlined /> },

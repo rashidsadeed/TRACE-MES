@@ -77,6 +77,47 @@ class ProductionLine(models.Model):
         return f"{self.name} ({self.status})"
 
 
+# ---- CUSTOMER ORDER MODELS -----
+
+class OrderRequest(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    customer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='order_requests',
+        help_text='Customer who placed the request'
+    )
+    title = models.CharField(max_length=200, blank=True, null=True, help_text="Title or name of the order")
+    description = models.TextField(blank=True, null=True)
+    quantity = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    
+    file_3d = models.FileField(upload_to='order_requests/original/', blank=True, null=True, help_text='Original 3D file (.stl, .obj)')
+    file_glb = models.FileField(upload_to='order_requests/web/', blank=True, null=True, help_text='Converted 3D file for web (.glb)')
+    rejection_reason = models.TextField(blank=True, null=True, help_text='Reason for rejection if the order is rejected')
+    
+    work_order = models.OneToOneField(
+        'WorkOrder',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='order_request',
+        help_text='The work order generated from this request'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Order Request {self.id} from {self.customer.username} ({self.status})"
+
+
 # ---- SYSTEM AND AUDIT MODELS -----
 
 class SystemConfig(models.Model):
@@ -338,3 +379,17 @@ class DataExportJob(models.Model):
 
     def __str__(self):
         return f"Export {self.id} ({self.status}) — {self.format}"
+
+class Notification(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notifications')
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Notification for {self.user.username}: {self.title}"

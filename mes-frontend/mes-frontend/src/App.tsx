@@ -7,15 +7,26 @@ import {
 } from "react-router-dom";
 import { ConfigProvider, Spin } from "antd";
 import { AuthProvider } from "./auth/AuthContext";
-import PrivateRoute from "./auth/PrivateRoute";
+import PrivateRoute, { AdminRoute } from "./auth/PrivateRoute";
 import MainLayout from "./layouts/MainLayout";
 
 // --- Lazy-loaded pages (code splitting) ---
 const Dashboard = React.lazy(() => import("./pages/Dashboard"));
 const ProductionLine = React.lazy(() => import("./pages/Production"));
-const WorkOrders = React.lazy(() => import("./pages/WorkOrders"));
+const Backlog = React.lazy(() => import("./pages/Backlog"));
 const LiveMap = React.lazy(() => import("./pages/LiveMap"));
 const LoginPage = React.lazy(() => import("./pages/LoginPage"));
+const OrderRequests = React.lazy(() => import("./pages/OrderRequests"));
+const CustomerDashboard = React.lazy(() => import("./pages/Customer/Dashboard"));
+const NewOrder = React.lazy(() => import("./pages/Customer/NewOrder"));
+
+import { useAuth } from "./auth/AuthContext";
+
+const IndexRedirect: React.FC = () => {
+  const { user } = useAuth();
+  const isCustomer = user?.role === "Customer" || user?.role?.toLowerCase() === "customer";
+  return <Navigate to={isCustomer ? "/customer/orders" : "/dashboard"} replace />;
+};
 
 // --- Loading fallback ---
 const PageLoader: React.FC = () => (
@@ -62,16 +73,19 @@ const App: React.FC = () => {
                   </PrivateRoute>
                 }
               >
-                <Route index element={<Navigate to="/dashboard" replace />} />
-                <Route path="dashboard" element={<Dashboard />} />
-                <Route path="production" element={<ProductionLine />} />
-                <Route path="work-orders" element={<WorkOrders />} />
-                <Route path="live-map" element={<LiveMap />} />
+                <Route index element={<IndexRedirect />} />
+                <Route path="dashboard" element={<AdminRoute><Dashboard /></AdminRoute>} />
+                <Route path="order-requests" element={<AdminRoute><OrderRequests /></AdminRoute>} />
+                <Route path="production" element={<AdminRoute><ProductionLine /></AdminRoute>} />
+                <Route path="backlog" element={<AdminRoute><Backlog /></AdminRoute>} />
+                <Route path="live-map" element={<AdminRoute><LiveMap /></AdminRoute>} />
+                <Route path="customer/orders" element={<CustomerDashboard />} />
+                <Route path="customer/new-order" element={<NewOrder />} />
                 <Route
                   path="inventory"
-                  element={<Placeholder title="Inventory" />}
+                  element={<AdminRoute><Placeholder title="Inventory" /></AdminRoute>}
                 />
-                <Route path="settings" element={<Placeholder title="Settings" />} />
+                <Route path="settings" element={<AdminRoute><Placeholder title="Settings" /></AdminRoute>} />
               </Route>
             </Routes>
           </Suspense>

@@ -6,6 +6,7 @@ from .views import (
     LiveOverviewView, MachineTelemetryView, MachineEventListView,
     DataExportJobViewSet,
     SystemConfigViewSet, OperationViewSet, ProductionLineViewSet,
+    OrderRequestViewSet, NotificationViewSet,
 )
 
 router = DefaultRouter()
@@ -18,6 +19,8 @@ router.register(r'export/jobs', DataExportJobViewSet, basename='export-job')
 router.register(r'config', SystemConfigViewSet, basename='config')
 router.register(r'operations', OperationViewSet, basename='operation')
 router.register(r'production-lines', ProductionLineViewSet, basename='production-line')
+router.register(r'orders/requests', OrderRequestViewSet, basename='order-requests')
+router.register(r'notifications', NotificationViewSet, basename='notification')
 
 urlpatterns = [
     path('', include(router.urls)),

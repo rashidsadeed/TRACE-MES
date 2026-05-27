@@ -33,7 +33,7 @@ from django.utils import timezone
 from core.models import (
     Machine, Part, DefectCode, ProductionLine,
     WorkOrder, WorkOrderAssignment, WorkOrderExecution, MachineEvent,
-    ProductionLog,
+    ProductionLog, OrderRequest
 )
 from users.models import CustomUser
 
@@ -279,6 +279,39 @@ class Command(BaseCommand):
             verb = "✓  Created" if created else "   Exists "
             line_info = f" → {prod_line.name}" if prod_line else ""
             self.stdout.write(f"  {verb}: {wo_code} ({wo_status}){line_info}")
+            
+            # Also create an OrderRequest for the WorkOrder
+            # Customers are not created directly in seed_factory, so use admin or leave customer as None
+            # Actually, let's create a test customer if it doesn't exist
+            customer, _ = CustomUser.objects.get_or_create(
+                username="customer1",
+                defaults={"email": "customer@tracemes.local", "role_id": 4} # Assuming role_id 4 is customer, but it's better to just set customer=None or admin for seeding if no role
+            )
+            # Let's just avoid role_id hardcode.
+            customer, _ = CustomUser.objects.get_or_create(
+                username="test_customer",
+                defaults={"email": "cust@test.local"}
+            )
+            
+            req_status_map = {
+                "IN_PROGRESS": "APPROVED",
+                "PENDING": "PENDING",
+                "COMPLETED": "COMPLETED",
+                "CANCELLED": "CANCELLED"
+            }
+            order_req, req_created = OrderRequest.objects.get_or_create(
+                work_order=wo,
+                defaults={
+                    "customer": customer,
+                    "title": f"Order for {part.name}",
+                    "description": description,
+                    "quantity": target_qty,
+                    "status": req_status_map.get(wo_status, "PENDING")
+                }
+            )
+            if not req_created and order_req.status != req_status_map.get(wo_status, "PENDING"):
+                order_req.status = req_status_map.get(wo_status, "PENDING")
+                order_req.save(update_fields=['status'])
 
             if not machine_slug or not exec_status:
                 continue

@@ -22,6 +22,7 @@ from .models import (
     DefectCode, ProductionLog, AnomalySnapshot, ScrapLog,
     TelemetryPacket, MachineEvent,
     DataExportJob, SystemConfig, Operation, ProductionLine,
+    OrderRequest, Notification,
 )
 from .serializers import (
     MachineSerializer,
@@ -50,6 +51,9 @@ from .serializers import (
     DataExportJobCreateSerializer,
     SystemConfigSerializer,
     OperationSerializer,
+    OrderRequestSerializer,
+    OrderRequestCreateSerializer,
+    NotificationSerializer,
 )
 from core.audit import log_action
 
@@ -175,9 +179,28 @@ class WorkOrderViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         instance = serializer.instance
+        old_qty = instance.target_qty
+        old_due_date = instance.due_date
+
         before_data = WorkOrderSerializer(instance, context={'request': self.request}).data
         wo = serializer.save()
         after_data = WorkOrderSerializer(wo, context={'request': self.request}).data
+
+        if hasattr(wo, 'order_request') and wo.order_request and wo.order_request.customer:
+            changes = []
+            if old_qty != wo.target_qty:
+                changes.append(f"Quantity changed to {wo.target_qty}")
+            if old_due_date != wo.due_date:
+                new_date = wo.due_date.strftime('%Y-%m-%d') if wo.due_date else 'Not set'
+                changes.append(f"Due date changed to {new_date}")
+
+            if changes:
+                Notification.objects.create(
+                    user=wo.order_request.customer,
+                    title=f"Order Updated: {wo.code}",
+                    message="; ".join(changes)
+                )
+
         log_action(
             actor=self.request.user,
             action="UPDATE_WORKORDER",
@@ -187,6 +210,75 @@ class WorkOrderViewSet(viewsets.ModelViewSet):
             after=after_data,
             request=self.request,
         )
+
+    @action(detail=True, methods=['post'], url_path='cancel')
+    def cancel(self, request, pk=None):
+        wo = self.get_object()
+        reason = request.data.get('reason', 'No reason provided')
+        
+        with transaction.atomic():
+            wo.status = 'CANCELLED'
+            wo.save(update_fields=['status'])
+
+            executions = wo.executions.filter(status__in=['RUNNING', 'PAUSED', 'AWAITING_START', 'STOPPED'])
+            for ex in executions:
+                ex.status = 'STOPPED'
+                ex.completed_at = timezone.now()
+                ex.save(update_fields=['status', 'completed_at'])
+                
+                other_active = WorkOrderExecution.objects.filter(
+                    machine=ex.machine,
+                    status__in=['RUNNING', 'PAUSED'],
+                ).exclude(pk=ex.pk).exists()
+                if not other_active:
+                    ex.machine.status = 'IDLE'
+                    ex.machine.save(update_fields=['status'])
+
+            if hasattr(wo, 'order_request') and wo.order_request:
+                wo.order_request.status = 'CANCELLED'
+                wo.order_request.save(update_fields=['status'])
+                if wo.order_request.customer:
+                    Notification.objects.create(
+                        user=wo.order_request.customer,
+                        title=f"Order Cancelled: {wo.code}",
+                        message=f"Your order {wo.code} has been cancelled. Reason: {reason}"
+                    )
+                    
+        return Response({'status': 'cancelled'})
+
+    @action(detail=True, methods=['post'], url_path='complete')
+    def complete(self, request, pk=None):
+        wo = self.get_object()
+        
+        with transaction.atomic():
+            wo.status = 'COMPLETED'
+            wo.save(update_fields=['status'])
+
+            executions = wo.executions.filter(status__in=['RUNNING', 'PAUSED', 'AWAITING_START', 'STOPPED'])
+            for ex in executions:
+                ex.status = 'COMPLETED'
+                ex.completed_at = timezone.now()
+                ex.save(update_fields=['status', 'completed_at'])
+                
+                other_active = WorkOrderExecution.objects.filter(
+                    machine=ex.machine,
+                    status__in=['RUNNING', 'PAUSED'],
+                ).exclude(pk=ex.pk).exists()
+                if not other_active:
+                    ex.machine.status = 'IDLE'
+                    ex.machine.save(update_fields=['status'])
+
+            if hasattr(wo, 'order_request') and wo.order_request:
+                wo.order_request.status = 'COMPLETED'
+                wo.order_request.save(update_fields=['status'])
+                if wo.order_request.customer:
+                    Notification.objects.create(
+                        user=wo.order_request.customer,
+                        title=f"Order Completed: {wo.code}",
+                        message=f"Your order {wo.code} has been completed and is ready."
+                    )
+                    
+        return Response({'status': 'completed'})
 
     @action(detail=True, methods=['post'], url_path='assign')
     def assign(self, request, pk=None):
@@ -818,3 +910,246 @@ class ProductionLineViewSet(viewsets.ModelViewSet):
         if self.action in ('list', 'retrieve'):
             return [IsAuthenticated()]
         return [IsAdminUser()]
+
+# ---- Customer Order Request API views ----
+
+import trimesh
+from django.core.files.base import ContentFile
+
+class OrderRequestViewSet(viewsets.ModelViewSet):
+    """
+    GET    /api/orders/requests/       — list order requests (customers see their own, admins see all)
+    POST   /api/orders/requests/       — create a new order request with a 3D file
+    PATCH  /api/orders/requests/{id}/  — approve/reject request (admin only)
+    """
+    queryset = OrderRequest.objects.all().order_by('-created_at')
+    http_method_names = ['get', 'post', 'patch', 'head', 'options']
+
+    def get_permissions(self):
+        return [IsAuthenticated()]
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return OrderRequestCreateSerializer
+        return OrderRequestSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        # Customers only see their own requests unless they are staff
+        if not user.is_staff and user.role.filter(type='customer').exists():
+            return qs.filter(customer=user)
+        return qs
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            print("Validation Errors for OrderRequest:", serializer.errors)
+        return super().create(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        order_request = serializer.save(customer=self.request.user)
+        
+        # Convert 3D file to GLB for web viewing
+        if order_request.file_3d:
+            try:
+                # Load with trimesh
+                mesh = trimesh.load(order_request.file_3d.path)
+                if hasattr(mesh, 'dump'): 
+                    mesh = mesh.dump()
+                    if isinstance(mesh, list) and len(mesh) > 0:
+                        mesh = mesh[0]
+                # Export to GLB
+                glb_data = mesh.export(file_type='glb')
+                # Save to file_glb
+                filename = os.path.splitext(os.path.basename(order_request.file_3d.name))[0] + '.glb'
+                order_request.file_glb.save(filename, ContentFile(glb_data), save=True)
+            except Exception as e:
+                print(f"Failed to convert 3D file to GLB: {e}")
+                
+        after_data = OrderRequestSerializer(order_request, context={'request': self.request}).data
+        log_action(
+            actor=self.request.user,
+            action="CREATE_ORDER_REQUEST",
+            entity_type="OrderRequest",
+            entity_id=order_request.pk,
+            after=after_data,
+            request=self.request,
+        )
+        self._created_response_data = after_data
+
+    def create(self, request, *args, **kwargs):
+        """Override to return the full OrderRequestSerializer representation."""
+        super().create(request, *args, **kwargs)
+        return Response(self._created_response_data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='approve', permission_classes=[IsAdminUser])
+    def approve(self, request, pk=None):
+        """Approve an order request and create the corresponding WorkOrder and Part."""
+        order_request = self.get_object()
+        if order_request.status != 'PENDING':
+            return Response({'detail': 'Only pending requests can be approved.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .serializers import OrderRequestApproveSerializer
+        
+        serializer = OrderRequestApproveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        with transaction.atomic():
+            # 1. Create the Part
+            part = Part.objects.create(
+                name=data['part_name'],
+                sku=data['part_sku'],
+                description=f"Auto-generated for Order Request {order_request.id}",
+            )
+            
+            # Copy 3D file to part
+            if order_request.file_glb:
+                part.model_file.save(
+                    os.path.basename(order_request.file_glb.name),
+                    order_request.file_glb.file,
+                    save=True
+                )
+            elif order_request.file_3d:
+                part.model_file.save(
+                    os.path.basename(order_request.file_3d.name),
+                    order_request.file_3d.file,
+                    save=True
+                )
+
+            # Handle Custom Line Creation if requested
+            assignment_type = data.get('assignmentType')
+            final_production_line = data.get('production_line') or data.get('lineId')
+            
+            if assignment_type == 'custom-line' and data.get('customLineName'):
+                import string
+                from django.utils.text import slugify
+                base_slug = slugify(data.get('customLineName'))
+                slug = base_slug
+                counter = 1
+                while ProductionLine.objects.filter(slug=slug).exists():
+                    slug = f"{base_slug}-{counter}"
+                    counter += 1
+                    
+                final_production_line = ProductionLine.objects.create(
+                    name=data.get('customLineName'),
+                    slug=slug,
+                    status='Active',
+                    is_custom=True
+                )
+                
+            # 2. Create the WorkOrder
+            work_order = WorkOrder.objects.create(
+                code=f"WO-REQ-{str(order_request.id)[:8].upper()}",
+                description=order_request.description or f"Order from {order_request.customer.username}",
+                part=part,
+                production_line=final_production_line,
+                target_qty=data['target_qty'],
+                priority=data['priority'],
+                due_date=data.get('due_date'),
+                created_by=request.user,
+                status='PENDING'
+            )
+
+            # Assign machines if provided
+            machine_ids = []
+            if assignment_type == 'machine':
+                machine_ids = data.get('machineIds', [])
+            elif assignment_type == 'custom-line':
+                machine_ids = data.get('customMachineIds', [])
+
+            for machine in machine_ids:
+                WorkOrderAssignment.objects.create(
+                    work_order=work_order,
+                    machine=machine,
+                    assigned_by=request.user
+                )
+
+            # 3. Update OrderRequest
+            order_request.status = 'APPROVED'
+            order_request.work_order = work_order
+            order_request.save(update_fields=['status', 'work_order'])
+
+        # Serialize and return
+        after_data = OrderRequestSerializer(order_request, context={'request': request}).data
+        log_action(
+            actor=request.user,
+            action="APPROVE_ORDER_REQUEST",
+            entity_type="OrderRequest",
+            entity_id=order_request.pk,
+            after=after_data,
+            request=request,
+        )
+        return Response(after_data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='reject', permission_classes=[IsAdminUser])
+    def reject(self, request, pk=None):
+        order_request = self.get_object()
+        if order_request.status != 'PENDING':
+            return Response({'detail': 'Only pending requests can be rejected.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        order_request.status = 'REJECTED'
+        order_request.rejection_reason = request.data.get('rejection_reason', '')
+        order_request.save(update_fields=['status', 'rejection_reason'])
+        
+        after_data = OrderRequestSerializer(order_request, context={'request': request}).data
+        log_action(
+            actor=request.user,
+            action="REJECT_ORDER_REQUEST",
+            entity_type="OrderRequest",
+            entity_id=order_request.pk,
+            after=after_data,
+            request=request,
+        )
+        return Response(after_data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='retry-conversion')
+    def retry_conversion(self, request, pk=None):
+        import trimesh
+        from django.core.files.base import ContentFile
+        import os
+        
+        order_request = self.get_object()
+        if order_request.file_glb:
+            return Response({'detail': 'GLB file already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if not order_request.file_3d:
+            return Response({'detail': 'No original 3D file found.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            mesh = trimesh.load(order_request.file_3d.path)
+            # Some obj files with multiple objects load as trimesh.Scene instead of trimesh.Trimesh
+            if hasattr(mesh, 'dump'): 
+                mesh = mesh.dump()
+                if isinstance(mesh, list) and len(mesh) > 0:
+                    mesh = mesh[0]
+                    
+            glb_data = mesh.export(file_type='glb')
+            filename = os.path.splitext(os.path.basename(order_request.file_3d.name))[0] + '.glb'
+            order_request.file_glb.save(filename, ContentFile(glb_data), save=True)
+            
+            serializer = OrderRequestSerializer(order_request, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'detail': f'Conversion failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# ---- Notification API views ----
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    """
+    GET /api/notifications/ - list notifications for current user
+    POST /api/notifications/{id}/mark_read/ - mark as read
+    """
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='mark_read')
+    def mark_read(self, request, pk=None):
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save(update_fields=['is_read'])
+        return Response(self.get_serializer(notification).data)

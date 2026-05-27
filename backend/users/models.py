@@ -39,6 +39,7 @@ class Role(models.Model):
     class RoleType(models.TextChoices):
         SYSTEM = 'system', 'System'
         CUSTOM = 'custom', 'Custom'
+        CUSTOMER = 'customer', 'Customer'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     type = models.CharField(max_length=20, choices=RoleType.choices, default=RoleType.CUSTOM)

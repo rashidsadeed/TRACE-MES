@@ -17,14 +17,21 @@ const LoginPage: React.FC = () => {
   const location = useLocation();
   const [loading, setLoading] = useState(false);
 
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard";
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname;
 
   const handleLogin = async (values: LoginFormValues) => {
     setLoading(true);
     try {
-      await login(values.username, values.password);
+      const loggedInUser = await login(values.username, values.password);
       message.success("Login successful!");
-      navigate(from, { replace: true });
+      
+      let redirectPath = from;
+      if (!redirectPath || redirectPath === "/") {
+        const isCustomer = loggedInUser?.role === "Customer" || loggedInUser?.role?.toLowerCase() === "customer";
+        redirectPath = isCustomer ? "/customer/orders" : "/dashboard";
+      }
+      
+      navigate(redirectPath, { replace: true });
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Login failed";
       message.error(errorMessage);

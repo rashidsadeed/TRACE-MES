@@ -221,7 +221,6 @@ export const declineRequest = async (requestId: string, reason?: string): Promis
     return;
   }
   // Decline = cancel the pending work order with optional reason
-  const payload: Record<string, string> = { status: "CANCELLED" };
-  if (reason) payload.decline_reason = reason;
-  await apiClient.patch(`/workorders/${requestId}/`, payload);
+  const payload: Record<string, string> = { reason: reason || "Declined by admin" };
+  await apiClient.post(`/workorders/${requestId}/cancel/`, payload);
 };

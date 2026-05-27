@@ -6,6 +6,7 @@ from .models import (
     DefectCode, ProductionLog, AnomalySnapshot, ScrapLog,
     TelemetryPacket, MachineEvent,
     DataExportJob, SystemConfig, Operation, ProductionLine,
+    OrderRequest, Notification,
 )
 
 User = get_user_model()
@@ -45,8 +46,6 @@ class PartSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         file = getattr(obj, "model_file", None)
         if file and hasattr(file, "url"):
-            if request:
-                return request.build_absolute_uri(file.url)
             return file.url
         return None
 
@@ -69,11 +68,116 @@ class PartModelUploadSerializer(serializers.ModelSerializer):
 # ---- Helper for user representation ----
 
 class _UserMiniSerializer(serializers.ModelSerializer):
-    """Minimal read-only user representation (UUID + username)."""
+    """Minimal read-only user representation (UUID + username + names)."""
     class Meta:
         model = User
-        fields = ["id", "username"]
+        fields = ["id", "username", "first_name", "last_name"]
         read_only_fields = fields
+
+
+# ---- Order Request serializers ----
+
+class OrderRequestSerializer(serializers.ModelSerializer):
+    """Read serializer for Order Requests."""
+    customer = _UserMiniSerializer(read_only=True)
+    work_order_code = serializers.CharField(source="work_order.code", read_only=True)
+    file_3d_url = serializers.SerializerMethodField()
+    file_glb_url = serializers.SerializerMethodField()
+    work_order_details = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderRequest
+        fields = [
+            "id", "customer", "title", "description", "quantity", "status",
+            "file_3d", "file_glb", "file_3d_url", "file_glb_url",
+            "work_order", "work_order_code", "work_order_details",
+            "rejection_reason", "created_at", "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_file_3d_url(self, obj):
+        if obj.file_3d and hasattr(obj.file_3d, "url"):
+            return obj.file_3d.url
+        return None
+
+    def get_file_glb_url(self, obj):
+        if obj.file_glb and hasattr(obj.file_glb, "url"):
+            return obj.file_glb.url
+        return None
+
+    def get_work_order_details(self, obj):
+        """Return production metrics from the linked WorkOrder for customer visibility."""
+        wo = obj.work_order
+        if wo is None:
+            return None
+
+        # Sum good_qty across all executions → production_logs
+        good_qty = 0
+        for execution in wo.executions.prefetch_related('production_logs').all():
+            good_qty += sum(log.good_qty for log in execution.production_logs.all())
+
+        target = wo.target_qty or 0
+        progress = round((good_qty / target) * 100, 1) if target > 0 else 0
+
+        # Map backend status to a customer-friendly label
+        status_map = {
+            'PENDING': 'Queued',
+            'IN_PROGRESS': 'In Production',
+            'PAUSED': 'Paused',
+            'COMPLETED': 'Completed',
+            'CANCELLED': 'Cancelled',
+        }
+
+        return {
+            'status': status_map.get(wo.status, wo.status),
+            'raw_status': wo.status,
+            'target_qty': target,
+            'good_qty': good_qty,
+            'progress_percentage': progress,
+            'due_date': wo.due_date.isoformat() if wo.due_date else None,
+            'priority': wo.priority,
+        }
+
+
+class OrderRequestCreateSerializer(serializers.ModelSerializer):
+    """Write serializer for creating Order Requests."""
+    file_3d = serializers.FileField(
+        validators=[FileExtensionValidator(allowed_extensions=["stl", "obj"])],
+        required=False,
+        allow_null=True
+    )
+
+    class Meta:
+        model = OrderRequest
+        fields = ["title", "description", "quantity", "file_3d"]
+
+
+class OrderRequestApproveSerializer(serializers.Serializer):
+    """Write serializer for approving an Order Request — creates WorkOrder + Part."""
+    part_name = serializers.CharField(max_length=100)
+    part_sku = serializers.CharField(max_length=50)
+    target_qty = serializers.IntegerField(min_value=1)
+    priority = serializers.IntegerField(default=1)
+    due_date = serializers.DateTimeField(required=False, allow_null=True)
+    production_line = serializers.PrimaryKeyRelatedField(
+        queryset=ProductionLine.objects.all(), required=False, allow_null=True,
+    )
+    assignmentType = serializers.ChoiceField(
+        choices=['existing-line', 'machine', 'custom-line'], required=False, allow_null=True
+    )
+    lineId = serializers.PrimaryKeyRelatedField(
+        queryset=ProductionLine.objects.all(), required=False, allow_null=True,
+    )
+    machineIds = serializers.ListField(
+        child=serializers.PrimaryKeyRelatedField(queryset=Machine.objects.all()),
+        required=False, allow_null=True,
+    )
+    customMachineIds = serializers.ListField(
+        child=serializers.PrimaryKeyRelatedField(queryset=Machine.objects.all()),
+        required=False, allow_null=True,
+    )
+    customLineName = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True)
+
 
 
 # ---- Work Order serializers ----
@@ -82,13 +186,43 @@ class WorkOrderSerializer(serializers.ModelSerializer):
     """Read serializer — used for list / retrieve / audit snapshots."""
     part = PartSerializer(read_only=True)
     created_by = _UserMiniSerializer(read_only=True)
+    production_line = serializers.PrimaryKeyRelatedField(read_only=True)
+    machine_ids = serializers.SerializerMethodField()
+    customer = serializers.SerializerMethodField()
+    product_title = serializers.SerializerMethodField()
+    file_3d_url = serializers.SerializerMethodField()
+    file_glb_url = serializers.SerializerMethodField()
+
+    def get_machine_ids(self, obj):
+        return [assignment.machine_id for assignment in obj.assignments.all()]
+
+    def get_customer(self, obj):
+        if hasattr(obj, 'order_request') and obj.order_request.customer:
+            return _UserMiniSerializer(obj.order_request.customer).data
+        return None
+
+    def get_product_title(self, obj):
+        if hasattr(obj, 'order_request') and obj.order_request.title:
+            return obj.order_request.title
+        return None
+
+    def get_file_3d_url(self, obj):
+        if hasattr(obj, 'order_request') and obj.order_request.file_3d:
+            return obj.order_request.file_3d.url
+        return None
+
+    def get_file_glb_url(self, obj):
+        if hasattr(obj, 'order_request') and obj.order_request.file_glb:
+            return obj.order_request.file_glb.url
+        return None
 
     class Meta:
         model = WorkOrder
         fields = [
-            "id", "code", "description", "part", "target_qty",
-            "priority", "status", "due_date",
-            "created_by", "created_at", "updated_at",
+            "id", "code", "description", "part", "production_line",
+            "target_qty", "priority", "status", "due_date",
+            "created_by", "created_at", "updated_at", "machine_ids",
+            "customer", "product_title", "file_3d_url", "file_glb_url"
         ]
         read_only_fields = fields
 
@@ -175,8 +309,6 @@ class WorkOrderExecutionSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         file = getattr(obj.work_order.part, "model_file", None)
         if file and hasattr(file, "url"):
-            if request:
-                return request.build_absolute_uri(file.url)
             return file.url
         return None
 
@@ -397,3 +529,13 @@ class OperationSerializer(serializers.ModelSerializer):
         model = Operation
         fields = ["id", "name", "description"]
         read_only_fields = ["id"]
+
+# ---- Notification serializers ----
+
+class NotificationSerializer(serializers.ModelSerializer):
+    """Read/Write serializer for Notification."""
+
+    class Meta:
+        model = Notification
+        fields = ["id", "user", "title", "message", "is_read", "created_at"]
+        read_only_fields = ["id", "user", "created_at"]

@@ -1,5 +1,5 @@
 import React from "react";
-import { Modal, Form, Input, InputNumber, Button, Space, Select, DatePicker, Row, Col } from "antd";
+import { Modal, Form, Input, InputNumber, Button, Space, Select, DatePicker, Row, Col, AutoComplete } from "antd";
 import type { FormInstance } from "antd";
 import dayjs from "dayjs";
 import type {
@@ -17,6 +17,7 @@ interface StartJobModalProps {
   form: FormInstance<StartJobFormValues>;
   lines: ProductionLine[];
   availableMachines: Machine[];
+  parts: any[];
   onFinish: (values: StartJobFormValues) => void;
   onCancel: () => void;
   // Conflict
@@ -32,6 +33,7 @@ const StartJobModal: React.FC<StartJobModalProps> = ({
   form,
   lines,
   availableMachines,
+  parts,
   onFinish,
   onCancel,
   conflictMachines,
@@ -69,7 +71,13 @@ const StartJobModal: React.FC<StartJobModalProps> = ({
           label="Product Name"
           rules={[{ required: true, message: "Enter product name" }]}
         >
-          <Input placeholder="e.g. Widget X-500" />
+          <AutoComplete
+            options={parts.map((p) => ({ value: p.name }))}
+            placeholder="e.g. Widget X-500 (type any name)"
+            filterOption={(inputValue, option) =>
+              option!.value.toUpperCase().indexOf(inputValue.toUpperCase()) !== -1
+            }
+          />
         </Form.Item>
 
         <Row gutter={16}>

@@ -10,3 +10,5 @@ export { default as NavbarPortal } from "./NavbarPortal";
 export { default as EmergencyStopBar } from "./EmergencyStopBar";
 export { default as ErrorMachinesModal } from "./ErrorMachinesModal";
 export { default as MachineConflictAlert } from "./MachineConflictAlert";
+
+export { default as EditJobModal } from "./EditJobModal";

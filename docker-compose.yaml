@@ -31,6 +31,7 @@ services:
       - .env
     environment:
       - VITE_API_PROXY_TARGET=http://backend:8000
+      - VITE_API_MODE=real
     depends_on:
       - backend
 

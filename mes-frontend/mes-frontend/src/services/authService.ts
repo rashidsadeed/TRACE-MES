@@ -20,7 +20,7 @@ export interface BackendUser {
   first_name: string;
   last_name: string;
   email: string;
-  role: { id: string; name: string } | null;
+  role: { id: string; name: string }[] | null;
   is_staff: boolean;
 }
 
@@ -46,13 +46,20 @@ export interface AuthResponse {
 const delay = (ms = 300) => new Promise((r) => setTimeout(r, ms));
 
 /** Convert backend user shape to the frontend AuthUser shape. */
-const toAuthUser = (u: BackendUser): AuthUser => ({
-  id: u.id,
-  username: u.username,
-  fullName: `${u.first_name} ${u.last_name}`.trim() || u.username,
-  role: u.role?.name ?? (u.is_staff ? "Admin" : "Operator"),
-  email: u.email,
-});
+const toAuthUser = (u: BackendUser): AuthUser => {
+  let roleName = u.is_staff ? "Admin" : "Operator";
+  if (u.role && Array.isArray(u.role) && u.role.length > 0) {
+    roleName = u.role[0].name;
+  }
+
+  return {
+    id: u.id,
+    username: u.username,
+    fullName: `${u.first_name} ${u.last_name}`.trim() || u.username,
+    role: roleName,
+    email: u.email,
+  };
+};
 
 /* ------------------------------------------------------------------ */
 /*  Auth API                                                           */

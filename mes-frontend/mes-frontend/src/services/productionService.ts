@@ -137,8 +137,10 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
   const FALLBACK_ROUTE = ["Prep", "Processing", "QC", "Output"];
 
   const { data } = await apiClient.get<BackendExecution[]>("/executions/");
-  return data.map((e) => {
-    const actual = e.actual_qty || 0;
+  return data
+    .filter((e) => e.status !== "COMPLETED" && e.status !== "STOPPED")
+    .map((e) => {
+      const actual = e.actual_qty || 0;
     const target = e.target_qty || 0;
     const partName = e.part_name || "Unknown Product";
     const machineType = e.machine?.type ?? "";
@@ -172,7 +174,7 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
       lineId: e.production_line_slug ?? e.production_line_id ?? undefined,
       assignedMachineIds: [machineSlug],
       status: e.status === "RUNNING" ? "Running"
-        : e.status === "AWAITING_START" ? "Scheduled"
+        : e.status === "AWAITING_START" ? "Waiting"
         : e.status === "PAUSED" ? "Paused"
         : e.status === "STOPPED" ? "Stopped"
         : "Completed",
@@ -182,6 +184,7 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
       actualQty: actual,
       startTime: e.started_at,
       modelUrl: e.part_model_url ?? undefined,
+      workOrderId: e.work_order ?? undefined,
       currentStageIndex: stageIdx,
       stages: [...route],
       defects: 0,
@@ -204,19 +207,52 @@ export const getPendingOrders = async (): Promise<MockPendingOrder[]> => {
     part: { name: string } | null;
     target_qty: number;
     priority: number;
-    created_by: { username: string } | null;
+    created_by: { username: string; first_name?: string; last_name?: string } | null;
+    customer: { username: string; first_name?: string; last_name?: string } | null;
+    product_title: string | null;
+    file_3d_url: string | null;
+    file_glb_url: string | null;
+    due_date: string | null;
     created_at: string;
+    production_line: string | null;
+    machine_ids: string[];
   }>>("/workorders/", { params: { status: "PENDING" } });
 
-  return data.map((wo) => ({
-    key: wo.id,
-    orderId: wo.code,
-    client: wo.created_by?.username ?? "—",
-    product: wo.part?.name ?? "—",
-    quantity: wo.target_qty,
-    priority: wo.priority >= 3 ? "High" : wo.priority === 2 ? "Normal" : "Low",
-    dueDate: wo.created_at,
-  }));
+  return data.map((wo) => {
+    let clientName = undefined;
+    if (wo.customer) {
+      if (wo.customer.first_name || wo.customer.last_name) {
+        clientName = `${wo.customer.first_name || ""} ${wo.customer.last_name || ""}`.trim();
+      } else {
+        clientName = wo.customer.username;
+      }
+    }
+
+    let approvedBy = undefined;
+    if (wo.created_by) {
+      if (wo.created_by.first_name || wo.created_by.last_name) {
+        approvedBy = `${wo.created_by.first_name || ""} ${wo.created_by.last_name || ""}`.trim();
+      } else {
+        approvedBy = wo.created_by.username;
+      }
+    }
+
+    return {
+      key: wo.id,
+      orderId: wo.code,
+      client: wo.customer?.username ?? "Unknown",
+      clientName,
+      approvedBy,
+      product: wo.product_title ?? wo.part?.name ?? "Unknown",
+      quantity: wo.target_qty,
+      priority: wo.priority >= 3 ? "High" : wo.priority === 2 ? "Normal" : "Low",
+      dueDate: wo.due_date ?? wo.created_at,
+      productionLineId: wo.production_line ?? undefined,
+      machineIds: wo.machine_ids,
+      file3dUrl: wo.file_3d_url ?? undefined,
+      fileGlbUrl: wo.file_glb_url ?? undefined,
+    };
+  });
 };
 
 /* ------------------------------------------------------------------ */
@@ -226,7 +262,7 @@ export const getPendingOrders = async (): Promise<MockPendingOrder[]> => {
 export const createJob = async (job: MockProductionJob): Promise<MockProductionJob> => {
   if (isMockMode()) {
     await delay(200);
-    const newJob = { ...job, status: "Scheduled" as const };
+    const newJob = { ...job, status: "Waiting" as const };
     simulator.addJob(newJob);
     return newJob;
   }
@@ -239,7 +275,7 @@ export const createJob = async (job: MockProductionJob): Promise<MockProductionJ
   return {
     ...job,
     id: data.id,
-    status: "Scheduled",
+    status: "Waiting",
   };
 };
 
@@ -259,7 +295,7 @@ export const cancelJob = async (jobId: string): Promise<void> => {
     return;
   }
   // No explicit cancel on executions — just stop it
-  await apiClient.post(`/executions/${jobId}/stop/`);
+  await apiClient.post(`/workorders/${jobId}/cancel/`);
 };
 
 export const stopJob = async (jobId: string): Promise<void> => {
@@ -268,7 +304,8 @@ export const stopJob = async (jobId: string): Promise<void> => {
     simulator.stopJob(jobId);
     return;
   }
-  await apiClient.post(`/executions/${jobId}/stop/`);
+  // Pause the execution instead of cancelling the work order
+  await apiClient.post(`/executions/${jobId}/pause/`);
 };
 
 export const stopAll = async (): Promise<void> => {
@@ -282,7 +319,7 @@ export const stopAll = async (): Promise<void> => {
   const { data } = await apiClient.get<BackendExecution[]>("/executions/");
   const running = data.filter((e) => e.status === "RUNNING");
   await Promise.allSettled(
-    running.map((e) => apiClient.post(`/executions/${e.id}/stop/`)),
+    running.map((e) => apiClient.post(`/executions/${e.id}/pause/`)),
   );
 };
 
@@ -292,7 +329,7 @@ export const acceptOrder = async (
 ): Promise<MockProductionJob> => {
   if (isMockMode()) {
     await delay(200);
-    const newJob = { ...job, status: "Scheduled" as const };
+    const newJob = { ...job, status: "Waiting" as const };
     simulator.addJob(newJob);
     return newJob;
   }
@@ -302,5 +339,5 @@ export const acceptOrder = async (
     machine: job.assignedMachineIds?.[0],
     operator: null,
   });
-  return { ...job, id: data.id, status: "Scheduled" };
+  return { ...job, id: data.id, status: "Waiting" };
 };

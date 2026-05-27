@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Table,
   Tag,
@@ -16,9 +16,11 @@ import {
 } from "antd";
 import type { TableProps } from "antd";
 import {
-  DeleteOutlined,
   CaretRightOutlined,
   StopOutlined,
+  EditOutlined,
+  CheckCircleOutlined,
+  DeleteOutlined,
 } from "@ant-design/icons";
 import type { ProductionJob, Machine } from "../types";
 import {
@@ -41,6 +43,8 @@ interface JobsTableProps {
   onStartJob: (key: string) => void;
   onStopJob: (key: string) => void;
   onCancelJob: (key: string) => void;
+  onEditJob: (key: string) => void;
+  onCompleteJob: (key: string) => void;
 }
 
 const JobsTable: React.FC<JobsTableProps> = ({
@@ -51,7 +55,12 @@ const JobsTable: React.FC<JobsTableProps> = ({
   onStartJob,
   onStopJob,
   onCancelJob,
+  onEditJob,
+  onCompleteJob,
 }) => {
+  const [expandedRowKeys, setExpandedRowKeys] = useState<readonly React.Key[]>([]);
+  const [tableParams, setTableParams] = useState({ current: 1, pageSize: 10 });
+
   const columns: TableProps<ProductionJob>["columns"] = useMemo(
     () => [
       {
@@ -203,8 +212,8 @@ const JobsTable: React.FC<JobsTableProps> = ({
             );
           }
 
-          // Scheduled → start or cancel
-          if (record.status === "Scheduled") {
+          // Waiting -> start or cancel
+          if (record.status === "Waiting") {
             return (
               <Space>
                 <Button
@@ -235,12 +244,59 @@ const JobsTable: React.FC<JobsTableProps> = ({
             );
           }
 
-          // Paused / Completed
+          if (record.status === "Stopped") {
+            return (
+              <Space>
+                <Button
+                  type="text"
+                  icon={<EditOutlined />}
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditJob(record.key);
+                  }}
+                />
+                <Popconfirm
+                  title="Cancel this job?"
+                  onConfirm={() => onCancelJob(record.key)}
+                  onPopupClick={(e) => e.stopPropagation()}
+                >
+                  <Button
+                    type="text"
+                    danger
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </Popconfirm>
+              </Space>
+            );
+          }
+
+          if (record.status === "Completed") {
+            return (
+              <Popconfirm
+                title="Tamamlandı mı?"
+                onConfirm={() => onCompleteJob(record.key)}
+                onPopupClick={(e) => e.stopPropagation()}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  style={{ color: "#52c41a" }}
+                  icon={<CheckCircleOutlined />}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </Popconfirm>
+            );
+          }
+
+          // Paused
           return <Tag color="default">{record.status}</Tag>;
         },
       },
     ],
-    [getLineName, getMachinesByIds, onStartJob, onStopJob, onCancelJob],
+    [getLineName, getMachinesByIds, onStartJob, onStopJob, onCancelJob, onEditJob, onCompleteJob],
   );
 
   // --- Expanded Row ---
@@ -307,17 +363,36 @@ const JobsTable: React.FC<JobsTableProps> = ({
   };
 
   return (
-    <Table<ProductionJob>
-      columns={columns}
-      dataSource={jobs}
-      rowKey="key"
-      pagination={{ pageSize: 10 }}
-      scroll={{ x: "max-content" }}
-      expandable={{
-        expandedRowRender,
-        expandRowByClick: true,
-      }}
-    />
+    <>
+      <div style={{ marginBottom: 16 }}>
+        <Space>
+          <Button onClick={() => {
+            const currentData = jobs.slice((tableParams.current - 1) * tableParams.pageSize, tableParams.current * tableParams.pageSize);
+            const newKeys = new Set([...expandedRowKeys, ...currentData.map(j => j.key)]);
+            setExpandedRowKeys(Array.from(newKeys));
+          }}>Expand Page</Button>
+          <Button onClick={() => {
+            const currentData = jobs.slice((tableParams.current - 1) * tableParams.pageSize, tableParams.current * tableParams.pageSize);
+            const keysToRemove = new Set(currentData.map(j => j.key));
+            setExpandedRowKeys(expandedRowKeys.filter(k => !keysToRemove.has(k as string)));
+          }}>Collapse Page</Button>
+        </Space>
+      </div>
+      <Table<ProductionJob>
+        columns={columns}
+        dataSource={jobs}
+        rowKey="key"
+        pagination={{ current: tableParams.current, pageSize: tableParams.pageSize, showSizeChanger: true }}
+        onChange={(pagination) => setTableParams({ current: pagination.current || 1, pageSize: pagination.pageSize || 10 })}
+        scroll={{ x: "max-content" }}
+        expandable={{
+          expandedRowRender,
+          expandRowByClick: true,
+          expandedRowKeys,
+          onExpandedRowsChange: setExpandedRowKeys,
+        }}
+      />
+    </>
   );
 };
 

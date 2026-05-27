@@ -4,6 +4,29 @@ import { OrbitControls, useGLTF, Center, Environment } from "@react-three/drei";
 import { Tag, Spin } from "antd";
 import * as THREE from "three";
 
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: any) {
+    console.error("3D Model load error:", error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#ff4d4f" }}>
+          Failed to load 3D Model
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 interface ProductVisualizerProps {
   status: string;
   /** Optional URL to a GLB/GLTF 3D model file */
@@ -39,6 +62,14 @@ const ModelViewer: React.FC<{ url: string; isRunning: boolean }> = ({ url, isRun
   const { scene } = useGLTF(url);
   const groupRef = useRef<THREE.Group>(null);
 
+  const scale = React.useMemo(() => {
+    // Calculate the bounding box without mutating the shared scene object
+    const box = new THREE.Box3().setFromObject(scene);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    return maxDim > 0 ? 2.5 / maxDim : 1;
+  }, [scene]);
+
   useFrame((_, delta) => {
     if (groupRef.current && isRunning) {
       groupRef.current.rotation.y += delta * 0.5;
@@ -47,8 +78,8 @@ const ModelViewer: React.FC<{ url: string; isRunning: boolean }> = ({ url, isRun
 
   return (
     <Center>
-      <group ref={groupRef}>
-        <primitive object={scene} scale={1} />
+      <group ref={groupRef} scale={scale}>
+        <primitive object={scene} />
       </group>
     </Center>
   );
@@ -69,44 +100,46 @@ const ProductVisualizer: React.FC<ProductVisualizerProps> = React.memo(
           border: "1px solid #303030",
         }}
       >
-        <Suspense
-          fallback={
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "100%",
-              }}
-            >
-              <Spin tip="Loading 3D Model..." />
-            </div>
-          }
-        >
-          <Canvas
-            camera={{ position: [3, 2, 3], fov: 45 }}
-            style={{ height: "100%" }}
+        <ErrorBoundary>
+          <Suspense
+            fallback={
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: "100%",
+                }}
+              >
+                <Spin tip="Loading 3D Model..." />
+              </div>
+            }
           >
-            <ambientLight intensity={0.6} />
-            <directionalLight position={[5, 5, 5]} intensity={0.8} />
-            <Environment preset="studio" />
+            <Canvas
+              camera={{ position: [3, 2, 3], fov: 45 }}
+              style={{ height: "100%" }}
+            >
+              <ambientLight intensity={0.6} />
+              <directionalLight position={[5, 5, 5]} intensity={0.8} />
+              <Environment preset="studio" />
 
-            {modelUrl ? (
-              <ModelViewer url={modelUrl} isRunning={isRunning} />
-            ) : (
-              <FallbackBox isRunning={isRunning} />
-            )}
+              {modelUrl ? (
+                <ModelViewer url={modelUrl} isRunning={isRunning} />
+              ) : (
+                <FallbackBox isRunning={isRunning} />
+              )}
 
-            <OrbitControls
-              enablePan={false}
-              enableZoom={true}
-              minDistance={2}
-              maxDistance={8}
-              autoRotate={!isRunning}
-              autoRotateSpeed={1.5}
-            />
-          </Canvas>
-        </Suspense>
+              <OrbitControls
+                enablePan={false}
+                enableZoom={true}
+                minDistance={1}
+                maxDistance={15}
+                autoRotate={!isRunning}
+                autoRotateSpeed={1.5}
+              />
+            </Canvas>
+          </Suspense>
+        </ErrorBoundary>
 
         <div style={{ position: "absolute", bottom: 10, right: 10 }}>
           <Tag color="blue">3D Live View</Tag>

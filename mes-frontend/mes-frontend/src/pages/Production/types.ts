@@ -49,9 +49,10 @@ export interface ProductionLine {
 export type JobStatus =
   | "Running"
   | "Paused"
-  | "Scheduled"
+  | "Waiting"
   | "Stopped"
-  | "Completed";
+  | "Completed"
+  | "Cancelled";
 
 export interface ProductionJob {
   key: string;
@@ -63,6 +64,7 @@ export interface ProductionJob {
   status: JobStatus;
   priority?: Priority;
   dueDate?: string;
+  workOrderId?: string;
   targetQty: number;
   actualQty: number;
   startTime: string;
@@ -78,11 +80,17 @@ export interface ProductionJob {
 export interface PendingOrder {
   key: string;
   orderId: string;
-  client: string;
+  client: string; // fallback/username
+  clientName?: string; // first + last name
+  approvedBy?: string; // admin who created work order
   product: string;
   quantity: number;
   priority: "High" | "Normal" | "Low";
   dueDate: string;
+  productionLineId?: string;
+  machineIds?: string[];
+  file3dUrl?: string;
+  fileGlbUrl?: string;
 }
 
 // --- Form Types ---
@@ -115,4 +123,5 @@ export type ModalState =
   | { type: "closed" }
   | { type: "startJob" }
   | { type: "pendingOrders" }
-  | { type: "acceptOrder"; order: PendingOrder };
+  | { type: "acceptOrder"; order: PendingOrder }
+  | { type: "editJob"; job: ProductionJob };

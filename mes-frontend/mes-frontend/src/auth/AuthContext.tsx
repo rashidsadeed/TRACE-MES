@@ -6,7 +6,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
 }
 
@@ -32,6 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem("refresh_token", result.refreshToken);
     localStorage.setItem("auth_user", JSON.stringify(result.user));
     setUser(result.user);
+    return result.user;
   }, []);
 
   const logout = useCallback(async () => {

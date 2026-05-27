@@ -17,6 +17,7 @@
 
 export interface MockKPIData {
   key: string;
+  workOrderId?: string;
   title: string;
   value: number;
   suffix: string;
@@ -33,6 +34,7 @@ export const MOCK_KPI_DATA: MockKPIData[] = [
 
 export interface MockMachineLog {
   key: string;
+  workOrderId?: string;
   machine: string;
   status: "Running" | "Idle" | "Error" | "Maintenance";
   output: number;
@@ -161,6 +163,7 @@ export type ErrorLogStatus = "Active" | "Resolved";
 
 export interface MockErrorLog {
   key: string;
+  workOrderId?: string;
   timestamp: string;
   errorCode: string;
   message: string;
@@ -197,6 +200,7 @@ export type MachineStatus = "Available" | "In Use" | "Maintenance" | "Error";
 
 export interface MockMachine {
   key: string;
+  workOrderId?: string;
   id: string;
   name: string;
   type: MachineType;
@@ -225,6 +229,7 @@ export type LineStatus = "Active" | "Idle" | "Maintenance";
 
 export interface MockProductionLine {
   key: string;
+  workOrderId?: string;
   id: string;
   name: string;
   isCustom: boolean;
@@ -243,12 +248,13 @@ export type AssignmentType = "existing-line" | "machine" | "custom-line";
 export type JobStatus =
   | "Running"
   | "Paused"
-  | "Scheduled"
+  | "Waiting"
   | "Stopped"
   | "Completed";
 
 export interface MockProductionJob {
   key: string;
+  workOrderId?: string;
   id: string;
   productName: string;
   assignmentType: AssignmentType;
@@ -268,11 +274,12 @@ export interface MockProductionJob {
 export const MOCK_JOBS: MockProductionJob[] = [
   { key: "j1", id: "JOB-001", productName: "Auto Part X-200", assignmentType: "existing-line", lineId: "LINE-01", status: "Running", targetQty: 5000, actualQty: 3250, startTime: "08:00 AM", currentStageIndex: 2, stages: ["Raw Material", "Pressing", "Welding", "Quality Check", "Output"], defects: 12, estimatedTimeRemaining: "2h 15m" },
   { key: "j2", id: "JOB-002", productName: "Circuit Board V2", assignmentType: "existing-line", lineId: "LINE-02", status: "Paused", targetQty: 2000, actualQty: 1800, startTime: "08:15 AM", currentStageIndex: 3, stages: ["PCB Print", "Component Place", "Soldering", "Testing", "Boxing"], defects: 5, estimatedTimeRemaining: "45m" },
-  { key: "j3", id: "JOB-003", productName: "Housing Unit A", assignmentType: "existing-line", lineId: "LINE-03", status: "Scheduled", targetQty: 1000, actualQty: 0, startTime: "-", currentStageIndex: 0, stages: ["Molding", "Cooling", "Trimming", "Inspection"], defects: 0, estimatedTimeRemaining: "4h 00m" },
+  { key: "j3", id: "JOB-003", productName: "Housing Unit A", assignmentType: "existing-line", lineId: "LINE-03", status: "Waiting", targetQty: 1000, actualQty: 0, startTime: "-", currentStageIndex: 0, stages: ["Molding", "Cooling", "Trimming", "Inspection"], defects: 0, estimatedTimeRemaining: "4h 00m" },
 ];
 
 export interface MockPendingOrder {
   key: string;
+  workOrderId?: string;
   orderId: string;
   client: string;
   product: string;
@@ -296,6 +303,7 @@ export type Priority = "High" | "Normal" | "Low";
 
 export interface MockWorkOrder {
   key: string;
+  workOrderId?: string;
   id: string;
   product: string;
   quantity: number;
@@ -315,6 +323,7 @@ export const MOCK_WORK_ORDERS: MockWorkOrder[] = [
 
 export interface MockOrderRequest {
   key: string;
+  workOrderId?: string;
   client: string;
   product: string;
   quantity: number;

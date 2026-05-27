@@ -1,5 +1,7 @@
+import apiClient from "../../../services/apiClient";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Form, message } from "antd";
+import dayjs from "dayjs";
 import type {
   Machine,
   ProductionLine,
@@ -11,6 +13,7 @@ import type {
   AcceptOrderFormValues,
   Priority,
 } from "../types";
+import type { EditJobFormValues } from "../components/EditJobModal";
 import * as productionService from "../../../services/productionService";
 import * as workOrderService from "../../../services/workOrderService";
 import type {
@@ -79,6 +82,7 @@ export const useProduction = () => {
   // --- Forms ---
   const [startJobForm] = Form.useForm<StartJobFormValues>();
   const [acceptOrderForm] = Form.useForm<AcceptOrderFormValues>();
+  const [editJobForm] = Form.useForm<EditJobFormValues>(); // EditJobFormValues imported elsewhere or use any
 
   // --- Machine Conflict State ---
   const [conflictMachines, setConflictMachines] = useState<Machine[]>([]);
@@ -124,7 +128,7 @@ export const useProduction = () => {
         acc.total++;
         if (j.status === "Running") acc.running++;
         if (j.status === "Paused") acc.paused++;
-        if (j.status === "Scheduled") acc.scheduled++;
+        if (j.status === "Waiting") acc.scheduled++;
         return acc;
       },
       { total: 0, running: 0, paused: 0, scheduled: 0 },
@@ -205,6 +209,11 @@ export const useProduction = () => {
     resetConflicts();
   }, [startJobForm, resetConflicts]);
 
+  const openEditJobModal = useCallback((job: ProductionJob) => {
+    setModal({ type: "editJob", job });
+    editJobForm.resetFields();
+  }, [editJobForm]);
+
   const openPendingOrders = useCallback(() => {
     setModal({ type: "pendingOrders" });
   }, []);
@@ -213,6 +222,21 @@ export const useProduction = () => {
     (order: PendingOrder) => {
       setModal({ type: "acceptOrder", order });
       acceptOrderForm.resetFields();
+      if (order.productionLineId) {
+        acceptOrderForm.setFieldsValue({
+          assignmentType: "existing-line",
+          lineId: order.productionLineId,
+        });
+      } else if (order.machineIds && order.machineIds.length > 0) {
+        acceptOrderForm.setFieldsValue({
+          assignmentType: "machine",
+          machineIds: order.machineIds,
+        });
+      } else {
+        acceptOrderForm.setFieldsValue({
+          assignmentType: "existing-line", // Default
+        });
+      }
     },
     [acceptOrderForm],
   );
@@ -235,51 +259,51 @@ export const useProduction = () => {
         return;
       }
 
-      const part = findPartByProductName(parts, values.productName);
-      if (!part) {
-        message.error(
-          `Product "${values.productName}" not found in parts catalog. Pick an existing product (e.g. ${parts.slice(0, 3).map((p) => p.name).join(", ") || "—"}).`,
-          5,
-        );
-        return;
-      }
-
-      const woPayload: CreateWorkOrderPayload = {
-        code: `WO-${Date.now().toString(36).toUpperCase()}`,
-        description: values.productName,
-        part: part.id,
-        target_qty: values.targetQty,
-        priority: PRIORITY_TO_NUMBER[values.priority],
-      };
+      const woId = `WO-${Date.now().toString(36).toUpperCase()}`;
 
       try {
-        const wo = await workOrderService.createWorkOrder(woPayload);
-        const woId =
-          typeof wo === "object" && wo !== null && "id" in wo
-            ? (wo as { id: string }).id
-            : "";
-        if (!woId) throw new Error("Backend did not return new work order id.");
+        let partId: string | null = null;
+        const part = findPartByProductName(parts, values.productName);
+        if (part) {
+          partId = part.id;
+        } else {
+          // Auto-create new part on the fly
+          try {
+            const { data: newPart } = await apiClient.post("/parts/", {
+              name: values.productName,
+              sku: `PRD-${Date.now().toString().slice(-6)}`,
+            });
+            partId = newPart.id;
+            // Optionally update local parts list
+            setParts((prev) => [...prev, newPart]);
+          } catch (error) {
+            message.error("Failed to create new product. Check server logs.");
+            return;
+          }
+        }
 
-        await productionService.createJob({
-          key: woId,
-          id: woId,
-          productName: values.productName,
-          assignmentType: assignment.assignmentType,
-          lineId: assignment.lineId,
-          assignedMachineIds: [machineId],
-          status: "Scheduled",
-          targetQty: values.targetQty,
-          actualQty: 0,
-          startTime: "-",
-          currentStageIndex: 0,
-          stages: ["Prep", "Processing", "QC", "Output"],
-          defects: 0,
-          estimatedTimeRemaining: "TBD",
-        });
+        try {
+          await apiClient.post("/workorders/", {
+            code: woId,
+            description: `Manual Job: ${values.productName}`,
+            part: partId,
+            target_qty: values.targetQty,
+            priority: values.priority === "High" ? 3 : values.priority === "Normal" ? 2 : 1,
+            due_date: values.dueDate ? dayjs(values.dueDate).toISOString() : null,
+          });
 
-        await fetchData();
-        closeModal();
-        message.success("New production job scheduled.");
+          await apiClient.post("/workorders/" + woId + "/assign/", {
+            machine_id: machineId,
+            operator_id: null,
+          });
+
+          message.success("Production job scheduled!");
+          closeModal();
+          fetchData();
+        } catch (err) {
+          console.error("handleCreateJob failed", err);
+          message.error("Failed to start production job. Check server logs.");
+        }
       } catch (err) {
         console.error("handleCreateJob failed", err);
         message.error("Failed to start production job. Check server logs.");
@@ -308,7 +332,7 @@ export const useProduction = () => {
           assignmentType: assignment.assignmentType,
           lineId: assignment.lineId,
           assignedMachineIds: [machineId],
-          status: "Scheduled",
+          status: "Waiting",
           targetQty: order.quantity,
           actualQty: 0,
           startTime: "-",
@@ -357,7 +381,7 @@ export const useProduction = () => {
       if (!job) return;
 
       try {
-        await productionService.cancelJob(job.key);
+        await productionService.cancelJob(job.workOrderId || job.key);
         await fetchData();
         message.info("Job cancelled.");
       } catch (err) {
@@ -369,6 +393,43 @@ export const useProduction = () => {
   );
 
   // --- Lookup helpers ---
+
+
+  const handleEditJobSubmit = useCallback(
+    async (values: EditJobFormValues) => {
+      if (modal.type !== "editJob") return;
+      const job = modal.job;
+      try {
+        await apiClient.patch(`/workorders/${job.workOrderId || job.key}/`, {
+          target_qty: values.targetQty,
+          due_date: values.dueDate ? values.dueDate.format("YYYY-MM-DD") : null,
+        });
+        message.success("Job updated successfully.");
+        setModal({ type: "closed" });
+        await fetchData();
+      } catch (err) {
+        console.error(err);
+        message.error("Failed to update job.");
+      }
+    },
+    [modal, fetchData],
+  );
+
+  const handleCompleteJob = useCallback(
+    async (key: string) => {
+      try {
+        const job = jobs.find((j) => j.key === key);
+        if (!job) return;
+        await apiClient.post(`/workorders/${job.workOrderId || job.key}/complete/`);
+        message.success("Job marked as complete.");
+        await fetchData();
+      } catch (err) {
+        console.error(err);
+        message.error("Failed to complete job.");
+      }
+    },
+    [fetchData],
+  );
 
   const getLineName = useCallback(
     (lineId: string): string => {
@@ -434,6 +495,7 @@ export const useProduction = () => {
     lines,
     jobs,
     pendingOrders,
+    parts,
     availableMachines,
     stats,
     dataLoaded,
@@ -451,6 +513,10 @@ export const useProduction = () => {
     handleAcceptOrder,
     handleRunJob,
     handleCancelJob,
+    openEditJobModal,
+    editJobForm,
+    handleEditJobSubmit,
+    handleCompleteJob,
 
     getLineName,
     getMachinesForLine,
