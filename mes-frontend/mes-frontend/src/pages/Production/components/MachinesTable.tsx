@@ -48,9 +48,9 @@ const MachinesTable: React.FC<MachinesTableProps> = ({ machines }) => {
     () => [
       {
         title: "Machine ID",
-        dataIndex: "id",
-        key: "id",
-        sorter: (a, b) => a.id.localeCompare(b.id),
+        dataIndex: "slug",
+        key: "slug",
+        sorter: (a, b) => a.slug.localeCompare(b.slug),
         render: (text: string) => (
           <span style={styles.lineBold}>{text}</span>
         ),

@@ -265,6 +265,7 @@ export interface MockProductionJob {
   actualQty: number;
   startTime: string;
   modelUrl?: string;
+  currentMachineId?: string;
   currentStageIndex: number;
   stages: string[];
   defects: number;

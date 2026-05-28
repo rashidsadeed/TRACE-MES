@@ -10,6 +10,9 @@ import {
   Col,
   Statistic,
   Tag,
+  Modal,
+  Form,
+  Input,
 } from "antd";
 import {
   PlusOutlined,
@@ -57,19 +60,21 @@ const Production: React.FC = () => {
     stats,
     modal,
     openStartJobModal,
-
     openPendingOrders,
     openAcceptOrderModal,
+    openEditJobModal,
+    openCancelJobModal,
     closeModal,
     startJobForm,
     acceptOrderForm,
+    editJobForm,
+    cancelJobForm,
     handleCreateJob,
     handleAcceptOrder,
     handleRunJob,
     handleCancelJob,
-    openEditJobModal,
-    editJobForm,
     handleEditJobSubmit,
+    handleDeleteJobSubmit,
     handleCompleteJob,
     getLineName,
     getMachinesForLine,
@@ -141,7 +146,7 @@ const Production: React.FC = () => {
         </span>
       ),
       children: (
-                <JobsTable
+        <JobsTable
           jobs={filteredJobs}
           getLineName={getLineName}
           getMachinesForLine={getMachinesForLine}
@@ -149,8 +154,12 @@ const Production: React.FC = () => {
           onStartJob={handleRunJob}
           onStopJob={handleStopJob}
           onCancelJob={handleCancelJob}
+          onDeleteJob={(key) => {
+            const job = filteredJobs.find(j => j.key === key);
+            if (job) openCancelJobModal(job);
+          }}
           onEditJob={(key) => {
-            const job = jobs.find((j) => j.key === key);
+            const job = filteredJobs.find(j => j.key === key);
             if (job) openEditJobModal(job);
           }}
           onCompleteJob={handleCompleteJob}
@@ -381,6 +390,31 @@ const Production: React.FC = () => {
         onAssignmentChange={checkMachineConflicts}
         isSubmitBlocked={isConflictBlocked}
       />
+
+      {/* Modal: Delete/Cancel Job with Reason */}
+      <Modal
+        title="Delete Job"
+        open={modal.type === "cancelJob"}
+        onCancel={closeModal}
+        onOk={() => cancelJobForm.submit()}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+      >
+        <Form
+          form={cancelJobForm}
+          layout="vertical"
+          onFinish={handleDeleteJobSubmit}
+        >
+          <p>Are you sure you want to completely delete this job? This will inform the customer.</p>
+          <Form.Item 
+            name="reason" 
+            label="Reason for deletion"
+            rules={[{ required: true, message: "Please provide a reason" }]}
+          >
+            <Input.TextArea rows={4} placeholder="E.g. Cannot fulfill this request due to machine failure..." />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* Modal: Error Machines Drill-down */}
       <ErrorMachinesModal

@@ -7,7 +7,7 @@ from django.db import transaction
 from django.db.models import Prefetch, Subquery, OuterRef
 from django.http import FileResponse
 from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
@@ -320,7 +320,7 @@ class WorkOrderViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class ExecutionViewSet(viewsets.GenericViewSet):
+class ExecutionViewSet(mixins.DestroyModelMixin, viewsets.GenericViewSet):
     """
     Production execution lifecycle API.
 
@@ -542,6 +542,66 @@ class ExecutionViewSet(viewsets.GenericViewSet):
             request=request,
         )
         return Response(after_data)  # stop
+
+    def destroy(self, request, pk=None):
+        """Delete an execution and its work order, typically when STOPPED."""
+        with transaction.atomic():
+            execution = self.get_object()
+            work_order = execution.work_order
+            
+            # If provided, get reason
+            reason = request.data.get('reason', '')
+            
+            # Delete execution
+            execution_id = execution.pk
+            execution.delete()
+            
+            # Update associated work order instead of deleting it
+            if work_order:
+                # Cancel the work order
+                work_order.status = 'CANCELLED'
+                work_order.save(update_fields=['status'])
+                
+                # Update any remaining active executions for this work order to STOPPED
+                from django.utils import timezone
+                remaining_executions = work_order.executions.filter(status__in=['RUNNING', 'PAUSED', 'AWAITING_START'])
+                for ex in remaining_executions:
+                    ex.status = 'STOPPED'
+                    ex.completed_at = timezone.now()
+                    ex.save(update_fields=['status', 'completed_at'])
+                    
+                    # Update machine status if needed
+                    other_active = WorkOrderExecution.objects.filter(
+                        machine=ex.machine,
+                        status__in=['RUNNING', 'PAUSED'],
+                    ).exclude(pk=ex.pk).exists()
+                    if not other_active:
+                        ex.machine.status = 'IDLE'
+                        ex.machine.save(update_fields=['status'])
+                        
+                # Handle order request notification
+                if hasattr(work_order, 'order_request') and work_order.order_request:
+                    order_request = work_order.order_request
+                    # Store the reason but keep status APPROVED so it flows to history
+                    order_request.rejection_reason = reason
+                    order_request.save(update_fields=['rejection_reason'])
+                    
+                    if order_request.customer:
+                        Notification.objects.create(
+                            user=order_request.customer,
+                            title=f"Order Cancelled: {work_order.code}",
+                            message=f"Your order {work_order.code} has been cancelled. Reason: {reason}"
+                        )
+                
+            log_action(
+                actor=request.user,
+                action="DELETE_EXECUTION",
+                entity_type="WorkOrderExecution",
+                entity_id=execution_id,
+                after={'reason': reason},
+                request=request,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ---- Quality API views ----
@@ -1041,19 +1101,29 @@ class OrderRequestViewSet(viewsets.ModelViewSet):
                     slug = f"{base_slug}-{counter}"
                     counter += 1
                     
+                # Convert Machine instances to UUID strings for the JSONField
+                custom_machine_ids = data.get('customMachineIds', [])
+                custom_machine_id_strings = [str(m.id) for m in custom_machine_ids]
+
                 final_production_line = ProductionLine.objects.create(
                     name=data.get('customLineName'),
                     slug=slug,
-                    status='Active',
-                    is_custom=True
+                    status='ACTIVE',
+                    machine_sequence=custom_machine_id_strings
                 )
                 
+                # Attach selected machines to the newly created line
+                if custom_machine_ids:
+                    final_production_line.machines.set(custom_machine_ids)
+                    
             # 2. Create the WorkOrder
+            # If final_production_line is a UUID string (from data.get('lineId') if serializer didn't resolve it, though it does), or a model instance.
+            line_id = final_production_line.id if hasattr(final_production_line, 'id') else final_production_line
             work_order = WorkOrder.objects.create(
                 code=f"WO-REQ-{str(order_request.id)[:8].upper()}",
                 description=order_request.description or f"Order from {order_request.customer.username}",
                 part=part,
-                production_line=final_production_line,
+                production_line_id=line_id,
                 target_qty=data['target_qty'],
                 priority=data['priority'],
                 due_date=data.get('due_date'),
@@ -1068,10 +1138,10 @@ class OrderRequestViewSet(viewsets.ModelViewSet):
             elif assignment_type == 'custom-line':
                 machine_ids = data.get('customMachineIds', [])
 
-            for machine in machine_ids:
+            for machine_obj in machine_ids:
                 WorkOrderAssignment.objects.create(
                     work_order=work_order,
-                    machine=machine,
+                    machine=machine_obj,
                     assigned_by=request.user
                 )
 

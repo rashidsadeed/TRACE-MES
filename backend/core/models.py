@@ -65,6 +65,7 @@ class ProductionLine(models.Model):
     slug = models.SlugField(unique=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='IDLE')
     machines = models.ManyToManyField(Machine, related_name='production_lines', blank=True)
+    machine_sequence = models.JSONField(default=list, blank=True, help_text="Ordered list of machine UUIDs for this line")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):

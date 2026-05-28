@@ -121,6 +121,14 @@ const OrdersList: React.FC = () => {
     fetchOrders();
     fetchProductionLines();
     fetchMachines();
+    
+    // Poll every 5 seconds to automatically detect machines added by simulator_gui
+    const interval = setInterval(() => {
+      fetchOrders();
+      fetchProductionLines();
+      fetchMachines();
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   // Filter Data
@@ -180,8 +188,9 @@ const OrdersList: React.FC = () => {
       message.success("Order approved and moved to Backlog!");
       setIsModalVisible(false);
       fetchOrders();
-    } catch (error) {
-      message.error("Failed to approve order");
+    } catch (error: any) {
+      console.error("Approve error:", error?.response?.status, error?.response?.data, error);
+      message.error(`Failed to approve order: ${error?.response?.data?.detail || error?.message || 'Unknown error'}`);
     }
   };
 
@@ -333,13 +342,21 @@ const OrdersList: React.FC = () => {
       render: (_: any, record: OrderRequest) => {
         if (record.status === "REJECTED") {
           return (
-            <Tooltip title="No reason provided">
+            <Tooltip title={record.rejection_reason || "No reason provided"}>
               <Tag color="red">Rejected</Tag>
             </Tooltip>
           );
         }
         const status = record.work_order_details?.status;
         const cfg = PRODUCTION_STATUS_CONFIG[status || ""] ?? { icon: null, color: "default" };
+        
+        if (status === "Cancelled" && record.rejection_reason) {
+          return (
+            <Tooltip title={`Reason: ${record.rejection_reason}`}>
+              <Tag icon={cfg.icon} color={cfg.color}>{status}</Tag>
+            </Tooltip>
+          );
+        }
         return <Tag icon={cfg.icon} color={cfg.color}>{status}</Tag>;
       }
     },

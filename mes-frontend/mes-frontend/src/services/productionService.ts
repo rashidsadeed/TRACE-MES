@@ -45,6 +45,7 @@ interface BackendExecution {
   production_line_id?: string | null;
   production_line_slug?: string | null;
   production_line_name?: string | null;
+  production_line_sequence?: string[];
   part_model_url?: string | null;
 }
 
@@ -69,7 +70,8 @@ export const getMachines = async (): Promise<MockMachine[]> => {
   const { data } = await apiClient.get<BackendMachine[]>("/machines/");
   return data.map((m) => ({
     key: m.id,
-    id: m.slug || m.id,
+    id: m.id,
+    slug: m.slug || m.id,
     name: m.name,
     type: m.type as MockMachine["type"],
     status: m.status === "RUNNING" ? "In Use"
@@ -89,13 +91,13 @@ export const getLines = async (): Promise<MockProductionLine[]> => {
   }
   const [linesRes, execsRes] = await Promise.all([
     apiClient.get<BackendProductionLine[]>("/production-lines/"),
-    apiClient.get<BackendExecution[]>("/executions/", { params: { status: "RUNNING" } }),
+    apiClient.get<BackendExecution[]>("/executions/"),
   ]);
 
-  // Map line UUID → first running execution's WO code (display id).
+  // Map line UUID → first active execution's WO code (display id).
   const activeByLine = new Map<string, string>();
   for (const e of execsRes.data) {
-    if (e.production_line_id && !activeByLine.has(e.production_line_id)) {
+    if (e.production_line_id && !activeByLine.has(e.production_line_id) && e.status !== "COMPLETED") {
       activeByLine.set(
         e.production_line_id,
         e.work_order_code || e.id.substring(0, 8).toUpperCase(),
@@ -105,10 +107,11 @@ export const getLines = async (): Promise<MockProductionLine[]> => {
 
   return linesRes.data.map((line) => ({
     key: line.id,
-    id: line.slug || line.id,
+    id: line.id,
+    slug: line.slug || line.id,
     name: line.name,
     isCustom: false,
-    machineIds: line.machines.map((m) => m.slug || m.id),
+    machineIds: line.machines.map((m) => m.id),
     status: line.status === "ACTIVE" ? "Active"
       : line.status === "MAINTENANCE" ? "Maintenance"
       : "Idle",
@@ -138,7 +141,7 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
 
   const { data } = await apiClient.get<BackendExecution[]>("/executions/");
   return data
-    .filter((e) => e.status !== "COMPLETED" && e.status !== "STOPPED")
+    .filter((e) => e.status !== "COMPLETED")
     .map((e) => {
       const actual = e.actual_qty || 0;
     const target = e.target_qty || 0;
@@ -158,9 +161,11 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
       ? "existing-line"
       : "machine";
 
-    // Use slug-based ids so this matches the slug-keyed `machines` / `lines`
-    // arrays the UI joins against (display tags expect "CNC-001", not a UUID).
-    const machineSlug = e.machine?.slug || e.machine?.id || "";
+    // Use sequence if available, otherwise just current machine
+    const machineId = e.machine?.id || "";
+    const machineIds = e.production_line_sequence?.length 
+      ? e.production_line_sequence 
+      : [machineId];
 
     let prio: "High" | "Normal" | "Low" = "Normal";
     if (e.priority === 1) prio = "High";
@@ -171,8 +176,8 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
       id: e.work_order_code || e.id.substring(0, 8).toUpperCase(),
       productName: partName,
       assignmentType,
-      lineId: e.production_line_slug ?? e.production_line_id ?? undefined,
-      assignedMachineIds: [machineSlug],
+      lineId: e.production_line_id ?? undefined,
+      assignedMachineIds: machineIds,
       status: e.status === "RUNNING" ? "Running"
         : e.status === "AWAITING_START" ? "Waiting"
         : e.status === "PAUSED" ? "Paused"
@@ -185,6 +190,7 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
       startTime: e.started_at,
       modelUrl: e.part_model_url ?? undefined,
       workOrderId: e.work_order ?? undefined,
+      currentMachineId: machineId,
       currentStageIndex: stageIdx,
       stages: [...route],
       defects: 0,
@@ -288,6 +294,24 @@ export const runJob = async (jobId: string): Promise<void> => {
   await apiClient.post(`/executions/${jobId}/resume/`);
 };
 
+export const stopJob = async (jobId: string): Promise<void> => {
+  if (isMockMode()) {
+    await delay(200);
+    simulator.stopJob(jobId);
+    return;
+  }
+  await apiClient.post(`/executions/${jobId}/stop/`);
+};
+
+export const deleteJob = async (jobId: string, reason?: string): Promise<void> => {
+  if (isMockMode()) {
+    await delay(200);
+    // mock delete
+    return;
+  }
+  await apiClient.delete(`/executions/${jobId}/`, { data: { reason } });
+};
+
 export const cancelJob = async (jobId: string): Promise<void> => {
   if (isMockMode()) {
     await delay(200);
@@ -298,15 +322,6 @@ export const cancelJob = async (jobId: string): Promise<void> => {
   await apiClient.post(`/workorders/${jobId}/cancel/`);
 };
 
-export const stopJob = async (jobId: string): Promise<void> => {
-  if (isMockMode()) {
-    await delay(200);
-    simulator.stopJob(jobId);
-    return;
-  }
-  // Pause the execution instead of cancelling the work order
-  await apiClient.post(`/executions/${jobId}/pause/`);
-};
 
 export const stopAll = async (): Promise<void> => {
   if (isMockMode()) {

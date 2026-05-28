@@ -638,8 +638,34 @@ class MachineSimulator:
             exc.completed_at = ts
             exc.save(update_fields=["status", "completed_at"])
 
-            exc.work_order.status = "COMPLETED"
-            exc.work_order.save(update_fields=["status"])
+            # Check for next machine in sequence
+            next_machine = None
+            wo = exc.work_order
+            if wo.production_line and wo.production_line.machine_sequence:
+                seq = wo.production_line.machine_sequence
+                current_mid = str(exc.machine.id)
+                if current_mid in seq:
+                    current_idx = seq.index(current_mid)
+                    if current_idx + 1 < len(seq):
+                        next_mid = seq[current_idx + 1]
+                        try:
+                            from core.models import Machine
+                            next_machine = Machine.objects.get(pk=next_mid)
+                        except:
+                            pass
+                            
+            if next_machine:
+                # Create a new execution for the next machine
+                from core.models import WorkOrderExecution
+                WorkOrderExecution.objects.create(
+                    work_order=wo,
+                    machine=next_machine,
+                    status="AWAITING_START"
+                )
+                self._log_event(f"İş emri {wo.code} sıradaki makineye ({next_machine.name}) aktarıldı.")
+            else:
+                wo.status = "COMPLETED"
+                wo.save(update_fields=["status"])
 
             # Flush remaining production
             actual = sum(log.good_qty for log in exc.production_logs.all())

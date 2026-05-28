@@ -61,8 +61,12 @@ const buildNodesAndEdges = (
   const searchLower = searchValue.toLowerCase().trim();
 
   // ----- Lines -----
-  const filteredLines =
+  let filteredLines =
     lineFilter === "all" ? lines : lines.filter((l) => l.id === lineFilter);
+
+  // A line is visually rendered as a line ONLY if it has an active job.
+  // Otherwise, the line "dissolves" and its machines are rendered as standalone machines.
+  filteredLines = filteredLines.filter((l) => jobByLine.has(l.id));
 
   filteredLines.forEach((line, lineIdx) => {
     const lineY = LINE_START_Y + lineIdx * LINE_GAP_Y;
@@ -198,7 +202,7 @@ export const useDigitalTwin = () => {
   const [nodes, setNodes] = useState<MachineNodeType[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
 
-  // Fetch data on mount
+  // Fetch data on mount + poll every 5s
   useEffect(() => {
     const fetchAll = async () => {
       const [m, l, j] = await Promise.all([getMachines(), getLines(), getJobs()]);
@@ -208,6 +212,8 @@ export const useDigitalTwin = () => {
       setDataLoaded(true);
     };
     fetchAll();
+    const interval = setInterval(fetchAll, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   // Rebuild graph when data or filters change

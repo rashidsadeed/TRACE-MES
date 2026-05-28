@@ -43,18 +43,8 @@ from users.models import CustomUser
 # ---------------------------------------------------------------------------
 
 MACHINES = [
-    # RUNNING machines get executions and live telemetry
-    {"name": "CNC Lathe Alpha",    "slug": "cnc-001",    "type": "CNC",       "status": "RUNNING"},
-    {"name": "CNC Mill Beta",      "slug": "cnc-002",    "type": "CNC",       "status": "RUNNING"},
-    {"name": "Hydraulic Press X",  "slug": "press-001",  "type": "Press",     "status": "RUNNING"},
-    {"name": "MIG Welder Station", "slug": "weld-001",   "type": "Welding",   "status": "RUNNING"},
-    {"name": "Reflow Oven",        "slug": "solder-001", "type": "Soldering", "status": "RUNNING"},
-    {"name": "ICT Tester",         "slug": "test-001",   "type": "Testing",   "status": "RUNNING"},
-    {"name": "Assembly Robot Arm", "slug": "asm-001",    "type": "Assembly",  "status": "RUNNING"},
-    # IDLE / DOWN — can be started manually via the UI
-    {"name": "Injection Molder A", "slug": "mold-001",   "type": "Molding",   "status": "IDLE"},
-    {"name": "Auto Packer",        "slug": "pack-001",   "type": "Packaging", "status": "IDLE"},
-    {"name": "Spray Booth 1",      "slug": "paint-001",  "type": "Painting",  "status": "DOWN"},
+    # Machines are now meant to be created dynamically by the simulator GUI
+    # or incoming telemetry data stream.
 ]
 
 # (name, sku, description)
@@ -80,38 +70,14 @@ DEFECT_CODES = [
 
 # Production lines (name, slug, machine_slugs)
 PRODUCTION_LINES = [
-    ("Auto Parts Assembly Line", "line-auto-parts", ["cnc-001", "press-001", "weld-001"]),
-    ("PCB Manufacturing Line",   "line-pcb",        ["solder-001", "test-001"]),
-    ("Injection Molding Line",   "line-molding",     ["mold-001"]),
+    # Lines will be built by users or created on-demand.
 ]
 
 # Work orders with realistic mixed statuses
 # (part_sku, wo_code, description, target_qty, priority, status,
 #  machine_slug_or_None, line_slug_or_None, exec_status_or_None, initial_progress_pct)
 WORK_ORDERS = [
-    # --- RUNNING on production lines ---
-    ("AP-X200", "WO-2026-001", "Auto Part X-200 milling run — Batch #47",
-     5000, 3, "IN_PROGRESS", "cnc-001", "line-auto-parts", "RUNNING", 35),
-    ("CB-V2",   "WO-2026-002", "Circuit Board V2 soldering — Lot #18",
-     2000, 2, "IN_PROGRESS", "solder-001", "line-pcb", "RUNNING", 62),
-    # --- RUNNING on direct machine assignment ---
-    ("BC-Y",    "WO-2026-003", "Battery Casing press forming — Shift A",
-     3000, 3, "IN_PROGRESS", "press-001", None, "RUNNING", 18),
-    ("SH-V3",   "WO-2026-004", "Sensor Housing weld sealing — Series V3",
-     1000, 2, "IN_PROGRESS", "weld-001", None, "RUNNING", 45),
-    # --- AWAITING_START (machine safety confirmation pending) ---
-    ("AP-X200", "WO-2026-005", "Auto Part functional test run",
-     5000, 2, "IN_PROGRESS", "test-001", None, "AWAITING_START", 0),
-    # --- COMPLETED (historical jobs) ---
-    ("HB-A",    "WO-2026-006", "Hydraulic Bracket final assembly — DONE",
-     2000, 2, "COMPLETED", "asm-001", None, "COMPLETED", 100),
-    ("CB-V2",   "WO-2026-007", "Circuit Board secondary CNC trimming — DONE",
-     1500, 1, "COMPLETED", "cnc-002", None, "COMPLETED", 100),
-    # --- PENDING (not yet accepted — visible in Accept Order) ---
-    ("SH-V3",   "WO-2026-008", "Sensor Housing injection moulding — queue",
-     800, 1, "PENDING", None, None, None, 0),
-    ("HB-A",    "WO-2026-009", "Hydraulic Bracket packaging run",
-     1500, 1, "PENDING", None, None, None, 0),
+    # Orders will be created by users or the simulator.
 ]
 
 

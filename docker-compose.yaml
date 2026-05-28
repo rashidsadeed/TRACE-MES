@@ -6,8 +6,6 @@ services:
         echo '=== TRACE-MES Backend Startup ===';
         python manage.py migrate --run-syncdb;
         python manage.py seed_factory;
-        python manage.py simulator_cli &
-        echo 'Simulator CLI started in background';
         python manage.py runserver 0.0.0.0:8000
       "
     volumes:

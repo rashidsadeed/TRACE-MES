@@ -20,6 +20,7 @@ export type MachineStatus = "Available" | "In Use" | "Maintenance" | "Error";
 export interface Machine {
   key: string;
   id: string;
+  slug: string;
   name: string;
   type: MachineType;
   status: MachineStatus;
@@ -37,6 +38,7 @@ export type LineStatus = "Active" | "Idle" | "Maintenance";
 export interface ProductionLine {
   key: string;
   id: string;
+  slug: string;
   name: string;
   isCustom: boolean;
   machineIds: string[];
@@ -69,6 +71,7 @@ export interface ProductionJob {
   actualQty: number;
   startTime: string;
   modelUrl?: string;
+  currentMachineId?: string;
   currentStageIndex: number;
   stages: string[];
   defects: number;
@@ -124,4 +127,5 @@ export type ModalState =
   | { type: "startJob" }
   | { type: "pendingOrders" }
   | { type: "acceptOrder"; order: PendingOrder }
-  | { type: "editJob"; job: ProductionJob };
+  | { type: "editJob"; job: ProductionJob }
+  | { type: "cancelJob"; job: ProductionJob };

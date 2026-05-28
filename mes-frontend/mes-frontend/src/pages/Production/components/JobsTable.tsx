@@ -43,6 +43,7 @@ interface JobsTableProps {
   onStartJob: (key: string) => void;
   onStopJob: (key: string) => void;
   onCancelJob: (key: string) => void;
+  onDeleteJob: (key: string) => void;
   onEditJob: (key: string) => void;
   onCompleteJob: (key: string) => void;
 }
@@ -55,6 +56,7 @@ const JobsTable: React.FC<JobsTableProps> = ({
   onStartJob,
   onStopJob,
   onCancelJob,
+  onDeleteJob,
   onEditJob,
   onCompleteJob,
 }) => {
@@ -88,7 +90,7 @@ const JobsTable: React.FC<JobsTableProps> = ({
               <Space wrap size={4}>
                 {assignedMachines.map((m) => (
                   <Tooltip key={m.id} title={m.name}>
-                    <Tag color={MACHINE_TYPE_COLOR[m.type]}>{m.id}</Tag>
+                    <Tag color={MACHINE_TYPE_COLOR[m.type]}>{m.slug}</Tag>
                   </Tooltip>
                 ))}
                 {assignedMachines.length === 0 &&
@@ -152,6 +154,7 @@ const JobsTable: React.FC<JobsTableProps> = ({
         render: (_: unknown, record: ProductionJob) => {
           if (record.targetQty === 0)
             return <span style={{ color: "#ccc" }}>N/A</span>;
+          
           const percent = Math.round(
             (record.actualQty / record.targetQty) * 100,
           );
@@ -257,8 +260,8 @@ const JobsTable: React.FC<JobsTableProps> = ({
                   }}
                 />
                 <Popconfirm
-                  title="Cancel this job?"
-                  onConfirm={() => onCancelJob(record.key)}
+                  title="Delete this order permanently?"
+                  onConfirm={() => onDeleteJob(record.key)}
                   onPopupClick={(e) => e.stopPropagation()}
                 >
                   <Button
@@ -296,7 +299,7 @@ const JobsTable: React.FC<JobsTableProps> = ({
         },
       },
     ],
-    [getLineName, getMachinesByIds, onStartJob, onStopJob, onCancelJob, onEditJob, onCompleteJob],
+    [getLineName, getMachinesByIds, onStartJob, onStopJob, onCancelJob, onDeleteJob, onEditJob, onCompleteJob],
   );
 
   // --- Expanded Row ---
@@ -315,13 +318,39 @@ const JobsTable: React.FC<JobsTableProps> = ({
             <Title level={5} style={styles.sectionTitle}>
               Process Tracking
             </Title>
-            <Steps
-              current={record.currentStageIndex}
-              size="small"
-              status={record.status === "Paused" ? "error" : "process"}
-              items={record.stages.map((stage) => ({ title: stage }))}
-              style={{ marginBottom: 24 }}
-            />
+            {record.assignedMachineIds && record.assignedMachineIds.length > 0 ? (
+              (() => {
+                const machines = getMachinesByIds(record.assignedMachineIds);
+                let currentStepIndex = 0;
+                if (record.currentMachineId) {
+                  const idx = record.assignedMachineIds.indexOf(record.currentMachineId);
+                  if (idx !== -1) currentStepIndex = idx;
+                }
+                if (record.status === "Completed") currentStepIndex = machines.length;
+
+                let stepStatus: "wait" | "process" | "finish" | "error" = "process";
+                if (record.status === "Stopped" || record.status === "Paused") stepStatus = "wait";
+                if (record.status === "Completed") stepStatus = "finish";
+
+                return (
+                  <Steps
+                    current={currentStepIndex}
+                    size="small"
+                    status={stepStatus}
+                    items={machines.map((m) => ({ title: m.name }))}
+                    style={{ marginBottom: 24 }}
+                  />
+                );
+              })()
+            ) : (
+              <Steps
+                current={record.currentStageIndex}
+                size="small"
+                status={record.status === "Paused" ? "error" : "process"}
+                items={record.stages.map((stage) => ({ title: stage }))}
+                style={{ marginBottom: 24 }}
+              />
+            )}
             <Descriptions title="Diagnostic Data" bordered size="small" column={2}>
               <Descriptions.Item label="Assignment">
                 {record.assignmentType === "machine"
@@ -334,7 +363,7 @@ const JobsTable: React.FC<JobsTableProps> = ({
                 {jobMachines.length > 0 ? (
                   <Space wrap size={4}>
                     {jobMachines.map((m) => (
-                      <Tag key={m.id} color={MACHINE_TYPE_COLOR[m.type]}>{m.id}</Tag>
+                      <Tag key={m.id} color={MACHINE_TYPE_COLOR[m.type]}>{m.slug}</Tag>
                     ))}
                   </Space>
                 ) : "—"}

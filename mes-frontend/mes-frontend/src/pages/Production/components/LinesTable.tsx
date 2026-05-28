@@ -15,8 +15,8 @@ const LinesTable: React.FC<LinesTableProps> = ({ lines, getMachinesForLine }) =>
     () => [
       {
         title: "Line ID",
-        dataIndex: "id",
-        key: "id",
+        dataIndex: "slug",
+        key: "slug",
         render: (text: string) => (
           <span style={styles.lineBold}>{text}</span>
         ),
@@ -55,7 +55,7 @@ const LinesTable: React.FC<LinesTableProps> = ({ lines, getMachinesForLine }) =>
             <div style={styles.machineListInLine}>
               {lineMachines.map((m) => (
                 <Tag key={m.id} color={MACHINE_TYPE_COLOR[m.type]}>
-                  {m.id} ({m.type})
+                  {m.slug} ({m.type})
                 </Tag>
               ))}
               {lineMachines.length === 0 && (

@@ -44,6 +44,7 @@ interface AssignmentResult {
   assignmentType: AssignmentType;
   lineId?: string;
   assignedMachineIds?: string[];
+  customLineName?: string;
 }
 
 export const useProduction = () => {
@@ -74,6 +75,11 @@ export const useProduction = () => {
 
   useEffect(() => {
     fetchData();
+    // Poll every 5 seconds to automatically detect machines added by simulator_gui
+    const interval = setInterval(() => {
+      fetchData();
+    }, 5000);
+    return () => clearInterval(interval);
   }, [fetchData]);
 
   // --- Modal ---
@@ -82,7 +88,8 @@ export const useProduction = () => {
   // --- Forms ---
   const [startJobForm] = Form.useForm<StartJobFormValues>();
   const [acceptOrderForm] = Form.useForm<AcceptOrderFormValues>();
-  const [editJobForm] = Form.useForm<EditJobFormValues>(); // EditJobFormValues imported elsewhere or use any
+  const [editJobForm] = Form.useForm<EditJobFormValues>();
+  const [cancelJobForm] = Form.useForm<{ reason: string }>(); // EditJobFormValues imported elsewhere or use any
 
   // --- Machine Conflict State ---
   const [conflictMachines, setConflictMachines] = useState<Machine[]>([]);
@@ -173,6 +180,7 @@ export const useProduction = () => {
         return {
           assignmentType: type,
           assignedMachineIds: values.customMachineIds,
+          customLineName: values.customLineName,
         };
       }
 
@@ -181,24 +189,19 @@ export const useProduction = () => {
     [],
   );
 
-  // Convention: machine.id = slug (display), machine.key = UUID (API).
-  // Forms emit slugs; the backend executions/start endpoint expects UUID.
+  // Forms and backend endpoints expect UUID.
   const pickTargetMachineId = useCallback(
     (assignment: AssignmentResult): string | undefined => {
-      const slugToUuid = (slugId: string): string | undefined =>
-        machines.find((m) => m.id === slugId)?.key;
-
       if (assignment.assignedMachineIds?.length) {
-        return slugToUuid(assignment.assignedMachineIds[0]);
+        return assignment.assignedMachineIds[0];
       }
       if (assignment.lineId) {
         const line = lines.find((l) => l.id === assignment.lineId);
-        const firstSlug = line?.machineIds[0];
-        if (firstSlug) return slugToUuid(firstSlug);
+        return line?.machineIds?.[0];
       }
       return undefined;
     },
-    [machines, lines],
+    [lines],
   );
 
   // --- Modal Helpers ---
@@ -213,6 +216,11 @@ export const useProduction = () => {
     setModal({ type: "editJob", job });
     editJobForm.resetFields();
   }, [editJobForm]);
+
+  const openCancelJobModal = useCallback((job: ProductionJob) => {
+    setModal({ type: "cancelJob", job });
+    cancelJobForm.resetFields();
+  }, [cancelJobForm]);
 
   const openPendingOrders = useCallback(() => {
     setModal({ type: "pendingOrders" });
@@ -245,6 +253,8 @@ export const useProduction = () => {
     setModal({ type: "closed" });
     startJobForm.resetFields();
     acceptOrderForm.resetFields();
+    editJobForm.resetFields();
+    cancelJobForm.resetFields();
     resetConflicts();
   }, [startJobForm, acceptOrderForm, resetConflicts]);
 
@@ -253,9 +263,16 @@ export const useProduction = () => {
   const handleCreateJob = useCallback(
     async (values: StartJobFormValues) => {
       const assignment = resolveAssignment(values.assignmentType, values);
-      const machineId = pickTargetMachineId(assignment);
-      if (!machineId) {
-        message.error("Please choose at least one machine for this job.");
+      let targetLineId = assignment.lineId;
+      let targetMachineIds = assignment.assignedMachineIds || [];
+      
+      if (assignment.assignmentType === 'existing-line' && targetLineId) {
+        const line = lines.find((l) => l.id === targetLineId);
+        if (line) targetMachineIds = line.machineIds;
+      }
+
+      if (!targetMachineIds.length && !targetLineId) {
+        message.error("Please choose at least one machine or line for this job.");
         return;
       }
 
@@ -283,19 +300,37 @@ export const useProduction = () => {
         }
 
         try {
+          // Create custom line if requested
+          if (assignment.assignmentType === 'custom-line' && assignment.customLineName) {
+            try {
+              const { data: newLine } = await apiClient.post("/production-lines/", {
+                name: assignment.customLineName,
+                status: 'ACTIVE',
+                machines: targetMachineIds,
+              });
+              targetLineId = newLine.id;
+            } catch (err) {
+              message.error("Failed to create custom line.");
+              return;
+            }
+          }
+
           await apiClient.post("/workorders/", {
             code: woId,
             description: `Manual Job: ${values.productName}`,
             part: partId,
+            production_line: targetLineId || null,
             target_qty: values.targetQty,
             priority: values.priority === "High" ? 3 : values.priority === "Normal" ? 2 : 1,
             due_date: values.dueDate ? dayjs(values.dueDate).toISOString() : null,
           });
 
-          await apiClient.post("/workorders/" + woId + "/assign/", {
-            machine_id: machineId,
-            operator_id: null,
-          });
+          for (const mId of targetMachineIds) {
+            await apiClient.post("/workorders/" + woId + "/assign/", {
+              machine_id: mId,
+              operator_id: null,
+            });
+          }
 
           message.success("Production job scheduled!");
           closeModal();
@@ -309,7 +344,7 @@ export const useProduction = () => {
         message.error("Failed to start production job. Check server logs.");
       }
     },
-    [resolveAssignment, pickTargetMachineId, parts, fetchData, closeModal],
+    [resolveAssignment, parts, fetchData, closeModal],
   );
 
   const handleAcceptOrder = useCallback(
@@ -413,6 +448,23 @@ export const useProduction = () => {
     [modal, fetchData],
   );
 
+  const handleDeleteJobSubmit = useCallback(
+    async (values: { reason: string }) => {
+      if (modal.type !== "cancelJob") return;
+      const job = modal.job;
+      try {
+        await productionService.deleteJob(job.key, values.reason);
+        message.success("Job deleted successfully.");
+        setModal({ type: "closed" });
+        await fetchData();
+      } catch (err) {
+        console.error(err);
+        message.error("Failed to delete job.");
+      }
+    },
+    [modal, fetchData],
+  );
+
   const handleCompleteJob = useCallback(
     async (key: string) => {
       try {
@@ -432,7 +484,7 @@ export const useProduction = () => {
   const getLineName = useCallback(
     (lineId: string): string => {
       const line = lines.find((l) => l.id === lineId);
-      return line ? `${line.id} — ${line.name}` : lineId;
+      return line ? `${line.slug} — ${line.name}` : lineId;
     },
     [lines],
   );
@@ -441,14 +493,20 @@ export const useProduction = () => {
     (lineId: string): Machine[] => {
       const line = lines.find((l) => l.id === lineId);
       if (!line) return [];
-      return machines.filter((m) => line.machineIds.includes(m.id));
+      const machineDict = new Map(machines.map((m) => [m.id, m]));
+      return line.machineIds
+        .map((id) => machineDict.get(id))
+        .filter((m): m is Machine => m !== undefined);
     },
     [lines, machines],
   );
 
   const getMachinesByIds = useCallback(
     (ids: string[]): Machine[] => {
-      return machines.filter((m) => ids.includes(m.id));
+      const machineDict = new Map(machines.map((m) => [m.id, m]));
+      return ids
+        .map((id) => machineDict.get(id))
+        .filter((m): m is Machine => m !== undefined);
     },
     [machines],
   );
@@ -502,18 +560,21 @@ export const useProduction = () => {
     openStartJobModal,
     openPendingOrders,
     openAcceptOrderModal,
+    openEditJobModal,
+    openCancelJobModal,
     closeModal,
 
     startJobForm,
     acceptOrderForm,
+    editJobForm,
+    cancelJobForm,
 
     handleCreateJob,
     handleAcceptOrder,
     handleRunJob,
     handleCancelJob,
-    openEditJobModal,
-    editJobForm,
     handleEditJobSubmit,
+    handleDeleteJobSubmit,
     handleCompleteJob,
 
     getLineName,

@@ -20,11 +20,25 @@ class MachineSerializer(serializers.ModelSerializer):
 
 class ProductionLineSerializer(serializers.ModelSerializer):
     """Read serializer for production lines — includes nested machines."""
-    machines = MachineSerializer(many=True, read_only=True)
+    machines = serializers.SerializerMethodField()
+    machine_sequence = serializers.JSONField(read_only=True)
+
+    def get_machines(self, obj):
+        # Return machines in the order defined by machine_sequence if available
+        machine_dict = {str(m.id): m for m in obj.machines.all()}
+        ordered_machines = []
+        if obj.machine_sequence:
+            for m_id in obj.machine_sequence:
+                if m_id in machine_dict:
+                    ordered_machines.append(machine_dict[m_id])
+                    del machine_dict[m_id]
+        # Append any remaining machines not in the sequence
+        ordered_machines.extend(machine_dict.values())
+        return MachineSerializer(ordered_machines, many=True).data
 
     class Meta:
         model = ProductionLine
-        fields = ["id", "name", "slug", "status", "machines"]
+        fields = ["id", "name", "slug", "status", "machines", "machine_sequence"]
         read_only_fields = fields
 
 
@@ -36,7 +50,19 @@ class ProductionLineWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductionLine
-        fields = ["name", "status", "machines"]
+        fields = ["name", "status", "machines", "machine_sequence"]
+
+    def create(self, validated_data):
+        machines = validated_data.get('machines', [])
+        if 'machine_sequence' not in validated_data and machines:
+            validated_data['machine_sequence'] = [str(m.id) for m in machines]
+        return super().create(validated_data)
+        
+    def update(self, instance, validated_data):
+        machines = validated_data.get('machines')
+        if machines is not None and 'machine_sequence' not in validated_data:
+            validated_data['machine_sequence'] = [str(m.id) for m in machines]
+        return super().update(instance, validated_data)
 
 
 class PartSerializer(serializers.ModelSerializer):
@@ -303,6 +329,7 @@ class WorkOrderExecutionSerializer(serializers.ModelSerializer):
     production_line_name = serializers.CharField(
         source="work_order.production_line.name", read_only=True, allow_null=True, default=None,
     )
+    production_line_sequence = serializers.SerializerMethodField()
     part_model_url = serializers.SerializerMethodField()
 
     def get_part_model_url(self, obj):
@@ -316,13 +343,21 @@ class WorkOrderExecutionSerializer(serializers.ModelSerializer):
         # Calculate sum of good_qty from all related production logs
         return sum(log.good_qty for log in obj.production_logs.all())
 
+    def get_production_line_sequence(self, obj):
+        if obj.work_order and obj.work_order.production_line_id:
+            return obj.work_order.production_line.machine_sequence
+        # Fallback for direct machine assignments: fetch assignments ordered by time
+        if obj.work_order:
+            return [str(a.machine_id) for a in obj.work_order.assignments.all().order_by('assigned_at')]
+        return []
+
     class Meta:
         model = WorkOrderExecution
         fields = [
             "id", "work_order", "work_order_code", "part_name", "machine", "operator",
             "status", "target_qty", "actual_qty", "priority", "due_date",
             "started_at", "paused_at", "completed_at",
-            "production_line_id", "production_line_slug", "production_line_name",
+            "production_line_id", "production_line_slug", "production_line_sequence", "production_line_name",
             "part_model_url",
         ]
         read_only_fields = fields
