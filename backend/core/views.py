@@ -1,4 +1,5 @@
 import os
+import threading
 from datetime import timedelta
 
 from django.conf import settings as django_settings
@@ -54,6 +55,8 @@ from .serializers import (
     OrderRequestSerializer,
     OrderRequestCreateSerializer,
     NotificationSerializer,
+    SimulatorMachineCreateSerializer,
+    SimulatorProgramStartSerializer,
 )
 from core.audit import log_action
 
@@ -453,13 +456,13 @@ class ExecutionViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=['post'], url_path='resume')
     def resume(self, request, pk=None):
-        """Resume a paused execution."""
+        """Resume a paused or awaiting-start execution."""
         with transaction.atomic():
             execution = WorkOrderExecution.objects.select_for_update().get(pk=self.get_object().pk)
 
-            if execution.status != 'PAUSED':
+            if execution.status not in ('PAUSED', 'AWAITING_START'):
                 return Response(
-                    {'detail': 'Cannot resume: execution is not paused.'},
+                    {'detail': 'Cannot resume/start: execution is not paused or awaiting start.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -473,7 +476,14 @@ class ExecutionViewSet(viewsets.GenericViewSet):
             work_order.status = 'IN_PROGRESS'
             work_order.save(update_fields=['status'])
 
+            # Ensure machine status is RUNNING
+            machine = Machine.objects.select_for_update().get(pk=execution.machine_id)
+            if machine.status != 'RUNNING':
+                machine.status = 'RUNNING'
+                machine.save(update_fields=['status'])
+
         execution.work_order.refresh_from_db()
+        execution.machine.refresh_from_db()
         after_data = self._serialize(execution)
         log_action(
             actor=request.user,
@@ -1152,4 +1162,145 @@ class NotificationViewSet(viewsets.ModelViewSet):
         notification = self.get_object()
         notification.is_read = True
         notification.save(update_fields=['is_read'])
-        return Response(self.get_serializer(notification).data)
+        return Response(self.get_serializer(notification).data)
+
+
+# ---- Simulator API views ----
+
+from core.simulator.machine_simulator import MachineSimulator
+
+# Singleton simulator instance shared across requests
+_simulator_instance = None
+_simulator_lock = threading.Lock()
+
+
+def get_simulator() -> MachineSimulator:
+    """Return the global MachineSimulator singleton."""
+    global _simulator_instance
+    if _simulator_instance is None:
+        with _simulator_lock:
+            if _simulator_instance is None:
+                _simulator_instance = MachineSimulator()
+    return _simulator_instance
+
+
+class SimulatorViewSet(viewsets.ViewSet):
+    """
+    Simulator control API — used by the Tkinter GUI and CLI to manage
+    simulated machines and programs.
+
+    POST   /api/simulator/add-machine/           — add a new machine
+    DELETE /api/simulator/remove-machine/{id}/    — remove (set OFFLINE)
+    POST   /api/simulator/start-program/{id}/     — start a program on a machine
+    POST   /api/simulator/pause/{id}/             — pause execution
+    POST   /api/simulator/resume/{id}/            — resume execution
+    POST   /api/simulator/stop/{id}/              — stop execution
+    GET    /api/simulator/status/                 — all machines status
+    GET    /api/simulator/event-log/              — recent event log
+    """
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['post'], url_path='add-machine')
+    def add_machine(self, request):
+        """Add a new machine to the system via the simulator."""
+        serializer = SimulatorMachineCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        sim = get_simulator()
+        machine = sim.add_machine(
+            name=data['name'],
+            machine_type=data['type'],
+            slug=data.get('slug', ''),
+        )
+        return Response(
+            MachineSerializer(machine).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=['delete'], url_path='remove-machine/(?P<machine_id>[^/.]+)')
+    def remove_machine(self, request, machine_id=None):
+        """Remove a machine (set to OFFLINE and stop active executions)."""
+        sim = get_simulator()
+        success = sim.remove_machine(machine_id)
+        if not success:
+            return Response(
+                {'detail': 'Machine not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response({'detail': 'Machine removed.'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='start-program/(?P<machine_id>[^/.]+)')
+    def start_program(self, request, machine_id=None):
+        """Start a simulated program on a machine."""
+        serializer = SimulatorProgramStartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        sim = get_simulator()
+        execution = sim.start_program(
+            machine_id=machine_id,
+            program_name=data.get('program_name', ''),
+            duration_minutes=data['duration_minutes'],
+            target_qty=data['target_qty'],
+        )
+        if not execution:
+            return Response(
+                {'detail': 'Cannot start program. Machine not found or already running.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            WorkOrderExecutionSerializer(execution, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=['post'], url_path='pause/(?P<execution_id>[^/.]+)')
+    def pause(self, request, execution_id=None):
+        """Pause a running execution."""
+        sim = get_simulator()
+        success = sim.pause_program(execution_id)
+        if not success:
+            return Response(
+                {'detail': 'Cannot pause. Execution not found or not running.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({'detail': 'Execution paused.'})
+
+    @action(detail=False, methods=['post'], url_path='resume/(?P<execution_id>[^/.]+)')
+    def resume(self, request, execution_id=None):
+        """Resume a paused execution."""
+        sim = get_simulator()
+        success = sim.resume_program(execution_id)
+        if not success:
+            return Response(
+                {'detail': 'Cannot resume. Execution not found or not paused.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({'detail': 'Execution resumed.'})
+
+    @action(detail=False, methods=['post'], url_path='stop/(?P<execution_id>[^/.]+)')
+    def stop_program(self, request, execution_id=None):
+        """Stop an execution."""
+        sim = get_simulator()
+        success = sim.stop_program(execution_id)
+        if not success:
+            return Response(
+                {'detail': 'Cannot stop. Execution not found or already completed.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({'detail': 'Execution stopped.'})
+
+    @action(detail=False, methods=['get'], url_path='status')
+    def simulator_status(self, request):
+        """Return all machines with their current simulation state."""
+        sim = get_simulator()
+        machines = sim.get_all_machines()
+        return Response(machines)
+
+    @action(detail=False, methods=['get'], url_path='event-log')
+    def event_log(self, request):
+        """Return the recent event log."""
+        sim = get_simulator()
+        limit = int(request.query_params.get('limit', 20))
+        events = sim.get_event_log(limit=limit)
+        return Response(events)

@@ -538,4 +538,32 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = ["id", "user", "title", "message", "is_read", "created_at"]
-        read_only_fields = ["id", "user", "created_at"]
+        read_only_fields = ["id", "user", "created_at"]
+
+
+# ---- Simulator serializers ----
+
+class SimulatorMachineCreateSerializer(serializers.Serializer):
+    """Write serializer for adding a machine via the simulator."""
+    name = serializers.CharField(max_length=100)
+    type = serializers.ChoiceField(choices=[
+        ("CNC", "CNC (Freze)"),
+        ("Turning", "Torna"),
+        ("Laser", "Lazer Kesim"),
+        ("Press", "Pres"),
+        ("Welding", "Kaynak"),
+        ("Soldering", "Lehim"),
+        ("Testing", "Test"),
+        ("Molding", "Enjeksiyon Kalıp"),
+        ("Painting", "Boya"),
+        ("Assembly", "Montaj"),
+        ("Packaging", "Paketleme"),
+    ])
+    slug = serializers.SlugField(required=False, allow_blank=True, default="")
+
+
+class SimulatorProgramStartSerializer(serializers.Serializer):
+    """Write serializer for starting a simulated program on a machine."""
+    program_name = serializers.CharField(max_length=200, required=False, default="")
+    duration_minutes = serializers.FloatField(min_value=0.1, max_value=1440, default=15.0)
+    target_qty = serializers.IntegerField(min_value=1, max_value=100000, default=100)

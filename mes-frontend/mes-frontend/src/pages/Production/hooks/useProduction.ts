@@ -359,10 +359,8 @@ export const useProduction = () => {
       if (!job) return;
 
       try {
-        // Backend "resume" only works on PAUSED executions.
-        // For SCHEDULED (= AWAITING_START on backend) the live generator flips
-        // the status to RUNNING automatically — we just refetch.
-        if (job.status === "Paused") {
+        // Backend "resume" now works on both PAUSED and AWAITING_START (Waiting) executions.
+        if (job.status === "Paused" || job.status === "Waiting") {
           await productionService.runJob(job.key);
         }
         await fetchData();

@@ -607,6 +607,9 @@ class ExecutionAPITests(TestCase):
         }
         resp = self.client.post(f"{self.base_url}start/", data, format="json")
         exec_id = resp.data.get("id") if resp.status_code == 201 else None
+        if exec_id:
+            # Set status to RUNNING in the DB so that other endpoint tests work
+            WorkOrderExecution.objects.filter(pk=exec_id).update(status='RUNNING')
         return resp, exec_id
 
     # ---- START tests ----
@@ -704,6 +707,19 @@ class ExecutionAPITests(TestCase):
         _, exec_id = self._start_execution()
         resp = self.client.post(f"{self.base_url}{exec_id}/resume/", format="json")
         self.assertEqual(resp.status_code, 400)
+
+    # 12b
+    def test_resume_awaiting_start_execution_returns_200(self):
+        _, exec_id = self._start_execution()
+        # Explicitly update back to AWAITING_START to test immediate starting from scheduled state
+        WorkOrderExecution.objects.filter(pk=exec_id).update(status='AWAITING_START')
+        resp = self.client.post(f"{self.base_url}{exec_id}/resume/", format="json")
+        self.assertEqual(resp.status_code, 200)
+        
+        execution = WorkOrderExecution.objects.get(pk=exec_id)
+        self.assertEqual(execution.status, 'RUNNING')
+        self.assertEqual(execution.work_order.status, 'IN_PROGRESS')
+        self.assertEqual(execution.machine.status, 'RUNNING')
 
     # ---- STOP tests ----
 
