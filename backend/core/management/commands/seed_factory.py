@@ -43,8 +43,18 @@ from users.models import CustomUser
 # ---------------------------------------------------------------------------
 
 MACHINES = [
-    # Machines are now meant to be created dynamically by the simulator GUI
-    # or incoming telemetry data stream.
+    # RUNNING machines get executions and live telemetry
+    {"name": "CNC Lathe Alpha",    "slug": "cnc-001",    "type": "CNC",       "status": "RUNNING"},
+    {"name": "CNC Mill Beta",      "slug": "cnc-002",    "type": "CNC",       "status": "RUNNING"},
+    {"name": "Hydraulic Press X",  "slug": "press-001",  "type": "Press",     "status": "RUNNING"},
+    {"name": "MIG Welder Station", "slug": "weld-001",   "type": "Welding",   "status": "RUNNING"},
+    {"name": "Reflow Oven",        "slug": "solder-001", "type": "Soldering", "status": "RUNNING"},
+    {"name": "ICT Tester",         "slug": "test-001",   "type": "Testing",   "status": "RUNNING"},
+    {"name": "Assembly Robot Arm", "slug": "asm-001",    "type": "Assembly",  "status": "RUNNING"},
+    # IDLE / DOWN — can be started manually via the UI
+    {"name": "Injection Molder A", "slug": "mold-001",   "type": "Molding",   "status": "IDLE"},
+    {"name": "Auto Packer",        "slug": "pack-001",   "type": "Packaging", "status": "IDLE"},
+    {"name": "Spray Booth 1",      "slug": "paint-001",  "type": "Painting",  "status": "DOWN"},
 ]
 
 # (name, sku, description)
@@ -70,14 +80,38 @@ DEFECT_CODES = [
 
 # Production lines (name, slug, machine_slugs)
 PRODUCTION_LINES = [
-    # Lines will be built by users or created on-demand.
+    ("Auto Parts Assembly Line", "line-auto-parts", ["cnc-001", "press-001", "weld-001"]),
+    ("PCB Manufacturing Line",   "line-pcb",        ["solder-001", "test-001"]),
+    ("Injection Molding Line",   "line-molding",     ["mold-001"]),
 ]
 
 # Work orders with realistic mixed statuses
 # (part_sku, wo_code, description, target_qty, priority, status,
 #  machine_slug_or_None, line_slug_or_None, exec_status_or_None, initial_progress_pct)
 WORK_ORDERS = [
-    # Orders will be created by users or the simulator.
+    # --- RUNNING on production lines ---
+    ("AP-X200", "WO-2026-001", "Auto Part X-200 milling run — Batch #47",
+     5000, 3, "IN_PROGRESS", "cnc-001", "line-auto-parts", "RUNNING", 35),
+    ("CB-V2",   "WO-2026-002", "Circuit Board V2 soldering — Lot #18",
+     2000, 2, "IN_PROGRESS", "solder-001", "line-pcb", "RUNNING", 62),
+    # --- RUNNING on direct machine assignment ---
+    ("BC-Y",    "WO-2026-003", "Battery Casing press forming — Shift A",
+     3000, 3, "IN_PROGRESS", "press-001", None, "RUNNING", 18),
+    ("SH-V3",   "WO-2026-004", "Sensor Housing weld sealing — Series V3",
+     1000, 2, "IN_PROGRESS", "weld-001", None, "RUNNING", 45),
+    # --- AWAITING_START (machine safety confirmation pending) ---
+    ("AP-X200", "WO-2026-005", "Auto Part functional test run",
+     5000, 2, "IN_PROGRESS", "test-001", None, "AWAITING_START", 0),
+    # --- COMPLETED (historical jobs) ---
+    ("HB-A",    "WO-2026-006", "Hydraulic Bracket final assembly — DONE",
+     2000, 2, "COMPLETED", "asm-001", None, "COMPLETED", 100),
+    ("CB-V2",   "WO-2026-007", "Circuit Board secondary CNC trimming — DONE",
+     1500, 1, "COMPLETED", "cnc-002", None, "COMPLETED", 100),
+    # --- PENDING (not yet accepted — visible in Accept Order) ---
+    ("SH-V3",   "WO-2026-008", "Sensor Housing injection moulding — queue",
+     800, 1, "PENDING", None, None, None, 0),
+    ("HB-A",    "WO-2026-009", "Hydraulic Bracket packaging run",
+     1500, 1, "PENDING", None, None, None, 0),
 ]
 
 
@@ -93,11 +127,12 @@ class Command(BaseCommand):
 
         admin      = self._create_admin()
         operators  = self._create_operators()
-        machines   = self._create_machines()
-        parts      = self._create_parts()
-        self._create_defect_codes()
-        lines      = self._create_production_lines(machines)
-        self._create_work_orders(admin, machines, parts, operators, lines)
+        customer   = self._create_customer()
+        # machines   = self._create_machines()
+        # parts      = self._create_parts()
+        # self._create_defect_codes()
+        # lines      = self._create_production_lines(machines)
+        # self._create_work_orders(admin, machines, parts, operators, lines)
 
         self.stdout.write(self.style.SUCCESS(
             "\n✓  Factory seed complete — system is ready for live data generation.\n"
@@ -120,6 +155,31 @@ class Command(BaseCommand):
         )
         self.stdout.write(self.style.SUCCESS("  ✓  Superuser:  admin / admin123"))
         return admin
+
+    def _create_customer(self):
+        from users.models import Role
+
+        if CustomUser.objects.filter(username="customer").exists():
+            self.stdout.write("  [skip] customer user already exists")
+            customer = CustomUser.objects.get(username="customer")
+        else:
+            customer = CustomUser.objects.create_user(
+                username="customer",
+                email="customer@tracemes.local",
+                password="customer123",
+                first_name="Müşteri",
+                last_name="Test",
+            )
+        
+        # Create and assign the Customer role so the frontend routing works
+        customer_role, _ = Role.objects.get_or_create(
+            name="Customer",
+            defaults={"type": "customer", "description": "External customer portal access"}
+        )
+        customer.role.add(customer_role)
+
+        self.stdout.write(self.style.SUCCESS("  ✓  Customer:   customer / customer123"))
+        return customer
 
     def _create_operators(self):
         defs = [
@@ -193,11 +253,20 @@ class Command(BaseCommand):
                 slug=slug,
                 defaults={"name": name, "status": "ACTIVE"},
             )
-            # Assign machines to line
+            # Assign machines to line, preserving the declared order so the
+            # machine_sequence reflects the real production flow.
+            ordered_ids = []
             for ms in machine_slugs:
                 m = machines.get(ms)
                 if m:
                     obj.machines.add(m)
+                    ordered_ids.append(str(m.id))
+            # Persist the ordered sequence so the new machine_sequence feature
+            # (serializer ordering, production_line_sequence, simulator routing
+            # to the next machine on completion) works with the seeded lines.
+            if obj.machine_sequence != ordered_ids:
+                obj.machine_sequence = ordered_ids
+                obj.save(update_fields=["machine_sequence"])
             line_map[slug] = obj
             verb = "✓  Created" if created else "   Exists "
             machine_names = ", ".join(m.name for m in obj.machines.all())
@@ -246,14 +315,10 @@ class Command(BaseCommand):
             line_info = f" → {prod_line.name}" if prod_line else ""
             self.stdout.write(f"  {verb}: {wo_code} ({wo_status}){line_info}")
             
-            # Also create an OrderRequest for the WorkOrder
-            # Customers are not created directly in seed_factory, so use admin or leave customer as None
-            # Actually, let's create a test customer if it doesn't exist
-            customer, _ = CustomUser.objects.get_or_create(
-                username="customer1",
-                defaults={"email": "customer@tracemes.local", "role_id": 4} # Assuming role_id 4 is customer, but it's better to just set customer=None or admin for seeding if no role
-            )
-            # Let's just avoid role_id hardcode.
+            # Also create an OrderRequest for the WorkOrder.
+            # Use a dedicated seed customer. CustomUser.role is a ManyToMany
+            # field (no role_id column), so roles are left to be assigned via
+            # the UI / RBAC layer rather than hardcoded here.
             customer, _ = CustomUser.objects.get_or_create(
                 username="test_customer",
                 defaults={"email": "cust@test.local"}

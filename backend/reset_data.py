@@ -7,10 +7,15 @@ django.setup()
 from core.models import (
     Machine, Part, DefectCode, ProductionLine,
     WorkOrder, WorkOrderAssignment, WorkOrderExecution,
-    MachineEvent, ProductionLog, OrderRequest, Notification, TelemetryPacket
+    MachineEvent, ProductionLog, OrderRequest, Notification, TelemetryPacket,
+    ScrapLog, AnomalySnapshot
 )
 
 def reset_data():
+    print("Deleting ScrapLogs...")
+    ScrapLog.objects.all().delete()
+    print("Deleting AnomalySnapshots...")
+    AnomalySnapshot.objects.all().delete()
     print("Deleting ProductionLogs...")
     ProductionLog.objects.all().delete()
     print("Deleting TelemetryPackets...")
