@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import {
   Button,
   Space,
@@ -22,6 +22,7 @@ import {
   AlertOutlined,
   FilterOutlined,
 } from "@ant-design/icons";
+import { useSearchParams } from "react-router-dom";
 import { useProduction } from "./hooks/useProduction";
 import {
   JobsTable,
@@ -91,21 +92,42 @@ const Production: React.FC = () => {
     isConflictBlocked,
   } = useProduction();
 
+  const [searchParams] = useSearchParams();
   const [errorModalOpen, setErrorModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("jobs");
   const [quickFilter, setQuickFilter] = useState<QuickFilter>(null);
+  const [jobSearch, setJobSearch] = useState("");
+
+  // Pre-fill search from ?search= query param (e.g. from ERP WO Ref link)
+  useEffect(() => {
+    const q = searchParams.get("search");
+    if (q) {
+      setJobSearch(q);
+      setActiveTab("jobs");
+    }
+  }, [searchParams]);
 
   const erroredMachines = useMemo(
     () => machines.filter((m) => m.status === "Error"),
     [machines],
   );
 
-  // Apply quick filter to jobs
+  // Apply quick filter + text search to jobs
   const filteredJobs = useMemo(() => {
-    if (quickFilter === "running") return jobs.filter((j) => j.status === "Running");
-    if (quickFilter === "scheduled") return jobs.filter((j) => j.status === "Waiting");
-    return jobs;
-  }, [jobs, quickFilter]);
+    let result = jobs;
+    if (quickFilter === "running") result = result.filter((j) => j.status === "Running");
+    else if (quickFilter === "scheduled") result = result.filter((j) => j.status === "Waiting");
+    if (jobSearch.trim()) {
+      const q = jobSearch.toLowerCase();
+      result = result.filter(
+        (j) =>
+          j.key.toLowerCase().includes(q) ||
+          j.productName.toLowerCase().includes(q) ||
+          (j.workOrderId?.toLowerCase() ?? "").includes(q),
+      );
+    }
+    return result;
+  }, [jobs, quickFilter, jobSearch]);
 
   // Apply quick filter to machines
   const filteredMachines = useMemo(() => {
@@ -212,8 +234,20 @@ const Production: React.FC = () => {
           </span>
         </div>
         <Space>
-          <Badge count={pendingOrders.length} offset={[-5, 5]}>
-            <Button icon={<InboxOutlined />} onClick={openPendingOrders}>
+          <Input.Search
+            placeholder="Search jobs…"
+            value={jobSearch}
+            onChange={(e) => setJobSearch(e.target.value)}
+            onSearch={setJobSearch}
+            allowClear
+            style={{ width: 220 }}
+          />
+          <Badge count={pendingOrders.length} style={{ backgroundColor: "#ff4d4f" }}>
+            <Button
+              icon={<InboxOutlined />}
+              onClick={openPendingOrders}
+              style={{ marginRight: 8 }}
+            >
               Pull from Backlog
             </Button>
           </Badge>
@@ -321,17 +355,30 @@ const Production: React.FC = () => {
       </Row>
 
       {/* Active Filter Indicator */}
-      {quickFilter && (
+      {(quickFilter || jobSearch) && (
         <div style={{ marginBottom: 16 }}>
-          <Tag
-            icon={<FilterOutlined />}
-            color="blue"
-            closable
-            onClose={clearFilter}
-            style={{ fontSize: 13, padding: "4px 12px" }}
-          >
-            Filtered: {FILTER_LABELS[quickFilter]}
-          </Tag>
+          {quickFilter && (
+            <Tag
+              icon={<FilterOutlined />}
+              color="blue"
+              closable
+              onClose={clearFilter}
+              style={{ fontSize: 13, padding: "4px 12px" }}
+            >
+              Filtered: {FILTER_LABELS[quickFilter]}
+            </Tag>
+          )}
+          {jobSearch && (
+            <Tag
+              icon={<FilterOutlined />}
+              color="purple"
+              closable
+              onClose={() => setJobSearch("")}
+              style={{ fontSize: 13, padding: "4px 12px" }}
+            >
+              Search: {jobSearch}
+            </Tag>
+          )}
         </div>
       )}
 

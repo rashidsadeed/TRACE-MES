@@ -7,3 +7,4 @@ django-cors-headers>=4.3 # To allow React to talk to Django
 djangorestframework-simplejwt>=5.3 # For JWT authentication
 trimesh>=4.0.0 # For 3D file conversion (.stl/.obj to .glb)
 Pillow>=10.0.0 # Required by trimesh for obj materials/textures
+openpyxl>=3.1    # Excel (.xlsx) parsing for SAP ERP import

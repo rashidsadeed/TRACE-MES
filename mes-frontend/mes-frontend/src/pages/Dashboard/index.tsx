@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Row, Col, Typography, Button, Tag } from "antd";
+import { Row, Col, Typography, Button, Tag, Card, Statistic } from "antd";
+import { useNavigate } from "react-router-dom";
 import { KPICard, MachineTable, MachineDetailDrawer, AlertMachinesModal } from "./components";
 import { useLiveTelemetry } from "./hooks/useLiveTelemetry";
 import { styles } from "./styles";
 import { getKPIs, getMachineLogs, getMachineDetail, getMachineErrorLogs, resetMachineAlarm } from "../../services/dashboardService";
+import erpService from "../../services/erpService";
 import type { KPIData, MachineLog, MachineDetail, ErrorLog, MachineStatus } from "./types";
 import {
   RocketOutlined,
@@ -12,6 +14,7 @@ import {
   AlertOutlined,
   FilterOutlined,
   CloseCircleOutlined,
+  ApiOutlined,
 } from "@ant-design/icons";
 
 const { Title } = Typography;
@@ -48,7 +51,14 @@ const KPI_FILTER_MAP: Record<string, KPIFilter> = {
   },
 };
 
+interface SAPStats {
+  total: number;
+  pending: number;
+  overdue: number;
+}
+
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
   const [kpiData, setKpiData] = useState<KPIData[]>([]);
   const [machineLogData, setMachineLogData] = useState<MachineLog[]>([]);
@@ -56,6 +66,7 @@ const Dashboard: React.FC = () => {
   const [errorLogs, setErrorLogs] = useState<ErrorLog[]>([]);
   const [alertsModalOpen, setAlertsModalOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const [sapStats, setSapStats] = useState<SAPStats | null>(null);
 
   const { data: telemetryData, latest: latestTelemetry } = useLiveTelemetry(selectedMachine);
 
@@ -89,6 +100,17 @@ const Dashboard: React.FC = () => {
     fetchData();
     const interval = setInterval(fetchData, 3000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Fetch SAP order summary (non-critical, no polling needed)
+  useEffect(() => {
+    erpService.listSAPOrders().then(({ data }) => {
+      setSapStats({
+        total: data.length,
+        pending: data.filter((o) => o.sync_status === "PENDING").length,
+        overdue: data.filter((o) => o.delay_days >= 60).length,
+      });
+    }).catch(() => {/* non-critical */});
   }, []);
 
   // Fetch machine detail when selection changes
@@ -167,6 +189,48 @@ const Dashboard: React.FC = () => {
             </Col>
           );
         })}
+
+        {sapStats !== null && (
+          <Col xs={24} sm={12} lg={6}>
+            <Card
+              bordered={false}
+              hoverable
+              style={{ height: "100%", cursor: "pointer" }}
+              onClick={() => navigate("/erp-integration")}
+            >
+              <div style={styles.kpiCardBody}>
+                <Statistic
+                  title="SAP Orders"
+                  value={sapStats.total}
+                  suffix={<span style={styles.kpiSuffix}>total</span>}
+                />
+                <div style={{ ...styles.kpiIconWrapper, background: "#f9f0ff" }}>
+                  <ApiOutlined style={{ color: "#722ed1", fontSize: 24 }} />
+                </div>
+              </div>
+              <div style={styles.kpiTrendRow}>
+                <Tag
+                  color="gold"
+                  style={{ margin: 0, cursor: "pointer" }}
+                  onClick={(e) => { e.stopPropagation(); navigate("/erp-integration"); }}
+                >
+                  {sapStats.pending} Pending
+                </Tag>
+                {sapStats.overdue > 0 ? (
+                  <Tag
+                    color="red"
+                    style={{ margin: 0, marginLeft: 8, cursor: "pointer" }}
+                    onClick={(e) => { e.stopPropagation(); navigate("/erp-integration"); }}
+                  >
+                    {sapStats.overdue} Overdue
+                  </Tag>
+                ) : (
+                  <Tag color="green" style={{ margin: 0, marginLeft: 8 }}>None Overdue</Tag>
+                )}
+              </div>
+            </Card>
+          </Col>
+        )}
       </Row>
 
       {/* Active Filter Indicator */}
