@@ -11,10 +11,10 @@ GEREKSINIMLER:
   PROJE DIZINI
 ============================================================
 
-  Proje koku:  c:\Users\Taha\Projects\docker_version
+  Proje koku:  c:\Users\Taha\Projects\TRACE-MES
 
   Yapisi:
-    docker_version/
+    TRACE-MES/
     ├── backend/            ← Django REST API
     ├── mes-frontend/
     │   └── mes-frontend/   ← Vite + React + Ant Design
@@ -30,7 +30,7 @@ GEREKSINIMLER:
 
   2. Proje kokune git:
 
-       cd "c:\Users\Taha\Projects\docker_version"
+       cd "c:\Users\Taha\Projects\TRACE-MES"
 
   3. Docker container'lari baslat:
 

@@ -258,33 +258,24 @@ const ERPIntegration: React.FC = () => {
       dataIndex: "priority",
       key: "priority",
       width: 110,
-      render: (val) => {
-        const cfg = PRIORITY_LABEL[val];
-        return cfg ? (
-          <Tag color={cfg.color}>{cfg.label}</Tag>
-        ) : (
-          <Tag color="default">Low</Tag>
-        );
+      render: (val, record) => {
+        let finalPriority = 1;
+        
+        if (record.sync_status === "SYNCED" && record.resolved_priority != null) {
+          finalPriority = record.resolved_priority;
+        } else {
+          const delay = record.delay_days || 0;
+          if (delay >= 60) finalPriority = 3;
+          else if (delay >= 30) finalPriority = 2;
+          else finalPriority = val === "A" ? 3 : val === "B" ? 2 : 1;
+        }
+
+        if (finalPriority === 3) return <Tag color="red">High</Tag>;
+        if (finalPriority === 2) return <Tag color="blue">Medium</Tag>;
+        return <Tag color="default">Low</Tag>;
       },
     },
-    {
-      title: "Work Order Ref",
-      dataIndex: "work_order_ref",
-      key: "work_order_ref",
-      width: 130,
-      render: (val) => {
-        if (!val) return <Text type="secondary">—</Text>;
-        return (
-          <Typography.Link
-            onClick={() =>
-              navigate(`/production?search=${encodeURIComponent(val)}`)
-            }
-          >
-            <Text code>{val}</Text>
-          </Typography.Link>
-        );
-      },
-    },
+
     {
       title: "Sync Status",
       dataIndex: "sync_status",

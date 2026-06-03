@@ -94,12 +94,12 @@ const StartJobModal: React.FC<StartJobModalProps> = ({
             <Form.Item
               name="priority"
               label="Priority"
-              initialValue="Normal"
+              initialValue="Medium"
               rules={[{ required: true, message: "Select priority" }]}
             >
               <Select>
                 <Select.Option value="High">High</Select.Option>
-                <Select.Option value="Normal">Normal</Select.Option>
+                <Select.Option value="Medium">Medium</Select.Option>
                 <Select.Option value="Low">Low</Select.Option>
               </Select>
             </Form.Item>

@@ -70,9 +70,9 @@ const PRODUCTION_STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: s
 };
 
 const PRIORITY_MAP: Record<number, { label: string; color: string }> = {
-  1: { label: "High",   color: "red" },
-  2: { label: "Normal", color: "blue" },
-  3: { label: "Low",    color: "green" },
+  3: { label: "High",   color: "red" },
+  2: { label: "Medium", color: "blue" },
+  1: { label: "Low",    color: "green" },
 };
 
 
@@ -244,11 +244,19 @@ const CustomerDashboard: React.FC = () => {
         const cfg = PRODUCTION_STATUS_CONFIG[details.status] ?? {
           icon: null, color: "default",
         };
-        return (
+        const tag = (
           <Tag icon={cfg.icon} color={cfg.color}>
             {details.status}
           </Tag>
         );
+        if (details.status === "Cancelled" || details.raw_status === "CANCELLED") {
+          return (
+            <Tooltip title={record.rejection_reason ? `Reason: ${record.rejection_reason}` : "No reason provided"}>
+              {tag}
+            </Tooltip>
+          );
+        }
+        return tag;
       },
     },
     {

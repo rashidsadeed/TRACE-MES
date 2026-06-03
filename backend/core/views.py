@@ -516,7 +516,8 @@ class ExecutionViewSet(mixins.DestroyModelMixin, viewsets.GenericViewSet):
             execution.save(update_fields=['status', 'completed_at', 'paused_at'])
 
             work_order = WorkOrder.objects.select_for_update().get(pk=execution.work_order_id)
-            work_order.status = 'CANCELLED'
+            # Keep the work order in IN_PROGRESS so the customer sees it as "In Production"
+            work_order.status = 'IN_PROGRESS'
             work_order.save(update_fields=['status'])
 
             # B-3: Only set machine IDLE if no other active executions exist on it
@@ -1171,6 +1172,14 @@ class OrderRequestViewSet(viewsets.ModelViewSet):
         order_request.status = 'REJECTED'
         order_request.rejection_reason = request.data.get('rejection_reason', '')
         order_request.save(update_fields=['status', 'rejection_reason'])
+        
+        if order_request.customer:
+            reason = order_request.rejection_reason or "No reason provided."
+            Notification.objects.create(
+                user=order_request.customer,
+                title=f"Order Rejected: {order_request.title or 'Unknown'}",
+                message=f"Your order request '{order_request.title or 'Unknown'}' has been rejected. Reason: {reason}"
+            )
         
         after_data = OrderRequestSerializer(order_request, context={'request': request}).data
         log_action(

@@ -22,9 +22,9 @@ import type {
 } from "../../../services/workOrderService";
 
 const PRIORITY_TO_NUMBER: Record<Priority, number> = {
-  High: 1,
-  Normal: 2,
-  Low: 3,
+  High: 3,
+  Medium: 2,
+  Low: 1,
 };
 
 const findPartByProductName = (
@@ -321,7 +321,7 @@ export const useProduction = () => {
             part: partId,
             production_line: targetLineId || null,
             target_qty: values.targetQty,
-            priority: values.priority === "High" ? 3 : values.priority === "Normal" ? 2 : 1,
+            priority: values.priority === "High" ? 3 : values.priority === "Medium" ? 2 : 1,
             due_date: values.dueDate ? dayjs(values.dueDate).toISOString() : null,
           });
 

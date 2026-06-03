@@ -8,8 +8,11 @@ import {
   CheckOutlined, CloseOutlined, EyeOutlined,
   ClockCircleOutlined, SyncOutlined, CheckCircleOutlined, PauseCircleOutlined,
   CalendarOutlined, PlusSquareOutlined, MinusSquareOutlined, ReloadOutlined,
-  UpOutlined, DownOutlined
+  UpOutlined, DownOutlined, SearchOutlined
 } from "@ant-design/icons";
+import type { InputRef } from "antd";
+import type { ColumnType } from "antd/es/table";
+import type { FilterDropdownProps } from "antd/es/table/interface";
 import apiClient from "../../services/apiClient";
 import ProductVisualizer from "../Production/components/ProductVisualizer";
 import AssignmentFields from "../Production/components/AssignmentFields";
@@ -40,6 +43,7 @@ interface Notification {
 interface OrderRequest {
   id: string;
   customer: { id: string; username: string };
+  title: string;
   description: string;
   quantity: number;
   status: string;
@@ -149,10 +153,10 @@ const OrdersList: React.FC = () => {
   const handleApproveClick = (record: OrderRequest) => {
     setApprovingOrder(record);
     form.setFieldsValue({
-      part_name: `Part for ${record.customer.username} - ${record.id.substring(0, 4)}`,
+      part_name: record.title || `Part for ${record.customer.username} - ${record.id.substring(0, 4)}`,
       part_sku: `SKU-${record.id.substring(0, 8).toUpperCase()}`,
       target_qty: record.quantity,
-      priority: 2, // Normal priority by default
+      priority: 2, // Medium priority by default
       assignmentType: "existing-line", // default
     });
     setIsModalVisible(true);
@@ -265,12 +269,50 @@ const OrdersList: React.FC = () => {
     rowExpandable: (record: OrderRequest) => true,
   };
 
+  const searchInput = React.useRef<InputRef>(null);
+
+  const getColumnSearchProps = (dataIndex: string | string[]): ColumnType<any> => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: FilterDropdownProps) => (
+      <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
+        <Input
+          ref={searchInput}
+          placeholder="Search..."
+          value={selectedKeys[0]}
+          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+          onPressEnter={() => confirm()}
+          style={{ marginBottom: 8, display: "block" }}
+        />
+        <Space>
+          <Button type="primary" onClick={() => confirm()} icon={<SearchOutlined />} size="small" style={{ width: 90 }}>
+            Search
+          </Button>
+          <Button onClick={() => { clearFilters?.(); confirm(); }} size="small" style={{ width: 90 }}>
+            Reset
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? "#1890ff" : undefined }} />,
+    onFilter: (value, record) => {
+      let val = record;
+      if (Array.isArray(dataIndex)) {
+        dataIndex.forEach(key => { val = val?.[key]; });
+      } else {
+        val = val?.[dataIndex];
+      }
+      return String(val ?? "").toLowerCase().includes((value as string).toLowerCase());
+    },
+    onFilterDropdownOpenChange: (visible) => {
+      if (visible) setTimeout(() => searchInput.current?.select(), 100);
+    },
+  });
+
   // Columns for Requests Tab
   const requestColumns = [
-    { title: "Customer", dataIndex: ["customer", "username"], key: "customer" },
-    { title: "Description", dataIndex: "description", key: "description", ellipsis: true },
-    { title: "Req. Qty", dataIndex: "quantity", key: "quantity", width: 100 },
-    { title: "Date", dataIndex: "created_at", key: "created_at", render: (val: string) => new Date(val).toLocaleDateString() },
+    { title: "Customer", dataIndex: ["customer", "username"], key: "customer", sorter: (a: OrderRequest, b: OrderRequest) => a.customer.username.localeCompare(b.customer.username), ...getColumnSearchProps(["customer", "username"]) },
+    { title: "Product Name", dataIndex: "title", key: "title", ellipsis: true, sorter: (a: OrderRequest, b: OrderRequest) => (a.title || "").localeCompare(b.title || ""), ...getColumnSearchProps("title") },
+    { title: "Req. Qty", dataIndex: "quantity", key: "quantity", width: 100, sorter: (a: OrderRequest, b: OrderRequest) => a.quantity - b.quantity },
+    { title: "Date", dataIndex: "created_at", key: "created_at", render: (val: string) => new Date(val).toLocaleDateString(), sorter: (a: OrderRequest, b: OrderRequest) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime() },
     fileColumn,
     {
       title: "Actions",
@@ -286,8 +328,9 @@ const OrdersList: React.FC = () => {
 
   // Columns for Active Orders Tab
   const activeColumns = [
-    { title: "WO Code", dataIndex: "work_order_code", key: "work_order_code", render: (val: string) => <Tag color="geekblue">{val}</Tag> },
-    { title: "Customer", dataIndex: ["customer", "username"], key: "customer" },
+    { title: "WO Code", dataIndex: "work_order_code", key: "work_order_code", render: (val: string) => <Tag color="geekblue">{val}</Tag>, sorter: (a: OrderRequest, b: OrderRequest) => (a.work_order_code || "").localeCompare(b.work_order_code || ""), ...getColumnSearchProps("work_order_code") },
+    { title: "Customer", dataIndex: ["customer", "username"], key: "customer", sorter: (a: OrderRequest, b: OrderRequest) => a.customer.username.localeCompare(b.customer.username), ...getColumnSearchProps(["customer", "username"]) },
+    { title: "Product Name", dataIndex: "title", key: "title", ellipsis: true, sorter: (a: OrderRequest, b: OrderRequest) => (a.title || "").localeCompare(b.title || ""), ...getColumnSearchProps("title") },
     { 
       title: "Production Status", 
       key: "production", 
@@ -315,6 +358,11 @@ const OrdersList: React.FC = () => {
     {
       title: "Due Date",
       key: "due_date",
+      sorter: (a: OrderRequest, b: OrderRequest) => {
+        const da = a.work_order_details?.due_date ? new Date(a.work_order_details.due_date).getTime() : 0;
+        const db = b.work_order_details?.due_date ? new Date(b.work_order_details.due_date).getTime() : 0;
+        return da - db;
+      },
       render: (_: any, record: OrderRequest) => {
         const dueDate = record.work_order_details?.due_date;
         if (!dueDate) return <Text type="secondary">—</Text>;
@@ -335,7 +383,8 @@ const OrdersList: React.FC = () => {
 
   // Columns for History Tab
   const historyColumns = [
-    { title: "Customer", dataIndex: ["customer", "username"], key: "customer" },
+    { title: "Customer", dataIndex: ["customer", "username"], key: "customer", sorter: (a: OrderRequest, b: OrderRequest) => a.customer.username.localeCompare(b.customer.username), ...getColumnSearchProps(["customer", "username"]) },
+    { title: "Product Name", dataIndex: "title", key: "title", ellipsis: true, sorter: (a: OrderRequest, b: OrderRequest) => (a.title || "").localeCompare(b.title || ""), ...getColumnSearchProps("title") },
     { 
       title: "Final Status", 
       key: "status", 
@@ -368,7 +417,7 @@ const OrdersList: React.FC = () => {
         return `${record.work_order_details.good_qty} / ${record.work_order_details.target_qty}`;
       }
     },
-    { title: "Order Date", dataIndex: "created_at", key: "created_at", render: (val: string) => new Date(val).toLocaleDateString() },
+    { title: "Order Date", dataIndex: "created_at", key: "created_at", render: (val: string) => new Date(val).toLocaleDateString(), sorter: (a: OrderRequest, b: OrderRequest) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime() },
     fileColumn,
   ];
 
@@ -429,7 +478,7 @@ const OrdersList: React.FC = () => {
           <Form.Item name="part_name" label="Part Name" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="part_sku" label="Part SKU" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="target_qty" label="Target Quantity" rules={[{ required: true }]}><InputNumber min={1} style={{ width: "100%" }} /></Form.Item>
-          <Form.Item name="priority" label="Priority (1=High, 2=Normal, 3=Low)" rules={[{ required: true }]}><InputNumber min={1} max={3} style={{ width: "100%" }} /></Form.Item>
+          <Form.Item name="priority" label="Priority (1=Low, 2=Medium, 3=High)" rules={[{ required: true }]}><InputNumber min={1} max={3} style={{ width: "100%" }} /></Form.Item>
           <Form.Item name="due_date" label="Due Date"><DatePicker style={{ width: "100%" }} showTime /></Form.Item>
           
           <div style={{ background: "#e6f4ff", padding: 16, borderRadius: 8, marginBottom: 24, border: "1px solid #91caff" }}>

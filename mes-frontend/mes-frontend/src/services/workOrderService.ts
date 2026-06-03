@@ -75,9 +75,9 @@ export const getWorkOrders = async (): Promise<MockWorkOrder[] | BackendWorkOrde
   }
 
   return activeWos.map((wo) => {
-    let prioStr: MockWorkOrder["priority"] = "Normal";
-    if (wo.priority === 1) prioStr = "High";
-    if (wo.priority === 3) prioStr = "Low";
+    let prioStr: MockWorkOrder["priority"] = "Medium";
+    if (wo.priority === 1) prioStr = "Low";
+    if (wo.priority === 3) prioStr = "High";
 
     let statStr: MockWorkOrder["status"] = "Pending";
     if (wo.status === "IN_PROGRESS") statStr = "In Progress";

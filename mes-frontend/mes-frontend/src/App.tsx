@@ -83,10 +83,6 @@ const App: React.FC = () => {
                 <Route path="customer/orders" element={<CustomerDashboard />} />
                 <Route path="customer/new-order" element={<NewOrder />} />
                 <Route path="erp-integration" element={<AdminRoute><ERPIntegration /></AdminRoute>} />
-                <Route
-                  path="inventory"
-                  element={<AdminRoute><Placeholder title="Inventory" /></AdminRoute>}
-                />
                 <Route path="settings" element={<AdminRoute><Placeholder title="Settings" /></AdminRoute>} />
               </Route>
             </Routes>

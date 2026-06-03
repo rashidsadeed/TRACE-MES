@@ -122,10 +122,10 @@ const JobsTable: React.FC<JobsTableProps> = ({
         dataIndex: "priority",
         key: "priority",
         sorter: (a, b) =>
-          PRIORITY_RANK[a.priority ?? "Normal"] -
-          PRIORITY_RANK[b.priority ?? "Normal"],
+          PRIORITY_RANK[a.priority ?? "Medium"] -
+          PRIORITY_RANK[b.priority ?? "Medium"],
         render: (priority: ProductionJob["priority"]) => {
-          const p = priority ?? "Normal";
+          const p = priority ?? "Medium";
           return <Tag color={PRIORITY_COLOR[p]}>{p.toUpperCase()}</Tag>;
         },
       },

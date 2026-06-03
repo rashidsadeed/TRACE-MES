@@ -167,9 +167,9 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
       ? e.production_line_sequence 
       : [machineId];
 
-    let prio: "High" | "Normal" | "Low" = "Normal";
-    if (e.priority === 1) prio = "High";
-    else if (e.priority === 3) prio = "Low";
+    let prio: "High" | "Medium" | "Low" = "Medium";
+    if (e.priority === 1) prio = "Low";
+    else if (e.priority === 3) prio = "High";
 
     return {
       key: e.id,
@@ -251,7 +251,7 @@ export const getPendingOrders = async (): Promise<MockPendingOrder[]> => {
       approvedBy,
       product: wo.product_title ?? wo.part?.name ?? "Unknown",
       quantity: wo.target_qty,
-      priority: wo.priority >= 3 ? "High" : wo.priority === 2 ? "Normal" : "Low",
+      priority: wo.priority >= 3 ? "High" : wo.priority === 2 ? "Medium" : "Low",
       dueDate: wo.due_date ?? wo.created_at,
       productionLineId: wo.production_line ?? undefined,
       machineIds: wo.machine_ids,

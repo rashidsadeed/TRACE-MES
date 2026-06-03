@@ -51,15 +51,15 @@ export const LINE_STATUS_CONFIG: Record<LineStatus, string> = {
   Maintenance: "warning",
 };
 
-export const PRIORITY_COLOR: Record<"High" | "Normal" | "Low", string> = {
+export const PRIORITY_COLOR: Record<"High" | "Medium" | "Low", string> = {
   High: "red",
-  Normal: "blue",
+  Medium: "blue",
   Low: "default",
 };
 
-export const PRIORITY_RANK: Record<"High" | "Normal" | "Low", number> = {
+export const PRIORITY_RANK: Record<"High" | "Medium" | "Low", number> = {
   High: 0,
-  Normal: 1,
+  Medium: 1,
   Low: 2,
 };
 
@@ -298,7 +298,7 @@ export const INITIAL_PENDING_ORDERS: PendingOrder[] = [
     client: "Bosch GmbH",
     product: "Sensor Housing V3",
     quantity: 3000,
-    priority: "Normal",
+    priority: "Medium",
     dueDate: dayjs().add(14, "day").format("YYYY-MM-DD"),
   },
   {
