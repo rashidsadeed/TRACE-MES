@@ -44,8 +44,6 @@ const BacklogPage: React.FC = () => {
   const [cancellingOrder, setCancellingOrder] = useState<PendingOrder | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [tableParams, setTableParams] = useState({ current: 1, pageSize: 10 });
-
-  
   const handleCancelClick = (order: PendingOrder) => {
     setCancellingOrder(order);
     setCancelReason("");

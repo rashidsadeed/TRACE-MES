@@ -19,6 +19,7 @@ const LoginPage = React.lazy(() => import("./pages/LoginPage"));
 const OrderRequests = React.lazy(() => import("./pages/OrderRequests"));
 const CustomerDashboard = React.lazy(() => import("./pages/Customer/Dashboard"));
 const NewOrder = React.lazy(() => import("./pages/Customer/NewOrder"));
+const ERPIntegration = React.lazy(() => import("./pages/ERPIntegration"));
 
 import { useAuth } from "./auth/AuthContext";
 
@@ -81,6 +82,7 @@ const App: React.FC = () => {
                 <Route path="live-map" element={<AdminRoute><LiveMap /></AdminRoute>} />
                 <Route path="customer/orders" element={<CustomerDashboard />} />
                 <Route path="customer/new-order" element={<NewOrder />} />
+                <Route path="erp-integration" element={<AdminRoute><ERPIntegration /></AdminRoute>} />
                 <Route
                   path="inventory"
                   element={<AdminRoute><Placeholder title="Inventory" /></AdminRoute>}

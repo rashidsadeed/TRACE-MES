@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "users",
     "core",
+    "erp_integration",
 ]
 
 MIDDLEWARE = [
