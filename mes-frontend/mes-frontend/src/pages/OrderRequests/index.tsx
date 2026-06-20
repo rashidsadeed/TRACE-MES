@@ -48,11 +48,49 @@ interface OrderRequest {
   quantity: number;
   status: string;
   created_at: string;
-  file_3d_url: string;
-  file_glb_url: string;
+  file_3d_url: string | null;
+  file_glb_url: string | null;
   work_order_code: string | null;
   work_order_details: WorkOrderDetails | null;
+  rejection_reason?: string | null;
+  /** True for work orders without a customer order request (seed/manual jobs). */
+  is_internal?: boolean;
 }
+
+/** Subset of WorkOrderSerializer used to surface internal jobs as orders. */
+interface BackendWorkOrder {
+  id: string;
+  code: string;
+  description: string;
+  part: { name: string } | null;
+  product_title: string | null;
+  customer: { id: string; username: string } | null;
+  target_qty: number;
+  status: string;
+  created_at: string;
+  file_3d_url: string | null;
+  file_glb_url: string | null;
+  production_details: WorkOrderDetails | null;
+}
+
+/** Map a customer-less WorkOrder into the OrderRequest row shape. */
+const internalWorkOrderToRow = (wo: BackendWorkOrder): OrderRequest => ({
+  id: wo.id,
+  customer: { id: "internal", username: "Internal" },
+  title: wo.product_title ?? wo.part?.name ?? wo.code,
+  description: wo.description,
+  quantity: wo.target_qty,
+  // APPROVED keeps internal jobs out of the pending Requests tab; the
+  // active/history split below is driven by work_order_details.raw_status.
+  status: "APPROVED",
+  created_at: wo.created_at,
+  file_3d_url: wo.file_3d_url,
+  file_glb_url: wo.file_glb_url,
+  work_order_code: wo.code,
+  work_order_details: wo.production_details,
+  rejection_reason: null,
+  is_internal: true,
+});
 
 const PRODUCTION_STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string }> = {
   Queued:          { icon: <ClockCircleOutlined />,  color: "default" },
@@ -86,8 +124,16 @@ const OrdersList: React.FC = () => {
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const { data } = await apiClient.get("/orders/requests/");
-      setOrders(data);
+      const [requestsRes, workOrdersRes] = await Promise.all([
+        apiClient.get<OrderRequest[]>("/orders/requests/"),
+        apiClient.get<BackendWorkOrder[]>("/workorders/"),
+      ]);
+      // Work orders without a customer are internal (seed/manual) jobs —
+      // surface them alongside customer orders in Active/History.
+      const internal = workOrdersRes.data
+        .filter((wo) => !wo.customer)
+        .map(internalWorkOrderToRow);
+      setOrders([...requestsRes.data, ...internal]);
     } catch (error) {
       message.error("Failed to load orders");
     } finally {

@@ -30,6 +30,7 @@ interface BackendMachine {
 interface BackendExecution {
   id: string;
   work_order: string;
+  work_order_status?: string;
   machine: BackendMachine;
   operator: { id: string; username: string } | null;
   status: string;
@@ -140,8 +141,38 @@ export const getJobs = async (): Promise<MockProductionJob[]> => {
   const FALLBACK_ROUTE = ["Prep", "Processing", "QC", "Output"];
 
   const { data } = await apiClient.get<BackendExecution[]>("/executions/");
-  return data
-    .filter((e) => e.status !== "COMPLETED")
+
+  // Hide executions whose work order is already archived (confirmed complete
+  // or cancelled) — those live in order history now.
+  const visible = data.filter(
+    (e) => e.work_order_status !== "COMPLETED" && e.work_order_status !== "CANCELLED",
+  );
+
+  // A COMPLETED execution is only shown when it is the production's final
+  // step: if the work order still has an active execution (next machine in
+  // the sequence), intermediate completed steps are hidden. When nothing is
+  // active anymore, keep only the most recent completed execution so the
+  // operator sees a single "Completed" row to confirm.
+  const ACTIVE_STATUSES = new Set(["RUNNING", "PAUSED", "AWAITING_START"]);
+  const hasActiveExecution = new Set<string>();
+  for (const e of visible) {
+    if (ACTIVE_STATUSES.has(e.status)) hasActiveExecution.add(e.work_order);
+  }
+  const latestCompleted = new Map<string, BackendExecution>();
+  for (const e of visible) {
+    if (e.status !== "COMPLETED") continue;
+    const prev = latestCompleted.get(e.work_order);
+    if (!prev || (e.completed_at ?? "") > (prev.completed_at ?? "")) {
+      latestCompleted.set(e.work_order, e);
+    }
+  }
+
+  return visible
+    .filter((e) => {
+      if (e.status !== "COMPLETED") return true;
+      if (hasActiveExecution.has(e.work_order)) return false;
+      return latestCompleted.get(e.work_order)?.id === e.id;
+    })
     .map((e) => {
       const actual = e.actual_qty || 0;
     const target = e.target_qty || 0;
@@ -330,11 +361,11 @@ export const stopAll = async (): Promise<void> => {
     return;
   }
   // No batch emergency stop in backend. This is a best-effort operation.
-  // Fetch all running executions and stop each.
+  // Fetch all active executions and stop each.
   const { data } = await apiClient.get<BackendExecution[]>("/executions/");
-  const running = data.filter((e) => e.status === "RUNNING");
+  const active = data.filter((e) => e.status === "RUNNING" || e.status === "PAUSED");
   await Promise.allSettled(
-    running.map((e) => apiClient.post(`/executions/${e.id}/pause/`)),
+    active.map((e) => apiClient.post(`/executions/${e.id}/stop/`)),
   );
 };
 

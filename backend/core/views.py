@@ -217,11 +217,19 @@ class WorkOrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='cancel')
     def cancel(self, request, pk=None):
         wo = self.get_object()
+        if wo.status in ('COMPLETED', 'CANCELLED'):
+            return Response(
+                {'detail': f'Cannot cancel a {wo.status} work order.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         reason = request.data.get('reason', 'No reason provided')
-        
+        before_data = WorkOrderSerializer(wo, context={'request': request}).data
+
         with transaction.atomic():
             wo.status = 'CANCELLED'
-            wo.save(update_fields=['status'])
+            # updated_at is auto_now but skipped unless listed in update_fields;
+            # it doubles as the "finished at" timestamp in order history.
+            wo.save(update_fields=['status', 'updated_at'])
 
             executions = wo.executions.filter(status__in=['RUNNING', 'PAUSED', 'AWAITING_START', 'STOPPED'])
             for ex in executions:
@@ -246,16 +254,33 @@ class WorkOrderViewSet(viewsets.ModelViewSet):
                         title=f"Order Cancelled: {wo.code}",
                         message=f"Your order {wo.code} has been cancelled. Reason: {reason}"
                     )
-                    
+
+        log_action(
+            actor=request.user,
+            action="CANCEL_WORKORDER",
+            entity_type="WorkOrder",
+            entity_id=wo.pk,
+            before=before_data,
+            after=WorkOrderSerializer(wo, context={'request': request}).data,
+            request=request,
+        )
         return Response({'status': 'cancelled'})
 
     @action(detail=True, methods=['post'], url_path='complete')
     def complete(self, request, pk=None):
         wo = self.get_object()
-        
+        if wo.status in ('COMPLETED', 'CANCELLED'):
+            return Response(
+                {'detail': f'Cannot complete a {wo.status} work order.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        before_data = WorkOrderSerializer(wo, context={'request': request}).data
+
         with transaction.atomic():
             wo.status = 'COMPLETED'
-            wo.save(update_fields=['status'])
+            # updated_at is auto_now but skipped unless listed in update_fields;
+            # it doubles as the "finished at" timestamp in order history.
+            wo.save(update_fields=['status', 'updated_at'])
 
             executions = wo.executions.filter(status__in=['RUNNING', 'PAUSED', 'AWAITING_START', 'STOPPED'])
             for ex in executions:
@@ -280,7 +305,16 @@ class WorkOrderViewSet(viewsets.ModelViewSet):
                         title=f"Order Completed: {wo.code}",
                         message=f"Your order {wo.code} has been completed and is ready."
                     )
-                    
+
+        log_action(
+            actor=request.user,
+            action="COMPLETE_WORKORDER",
+            entity_type="WorkOrder",
+            entity_id=wo.pk,
+            before=before_data,
+            after=WorkOrderSerializer(wo, context={'request': request}).data,
+            request=request,
+        )
         return Response({'status': 'completed'})
 
     @action(detail=True, methods=['post'], url_path='assign')
@@ -1011,11 +1045,6 @@ class OrderRequestViewSet(viewsets.ModelViewSet):
         if not user.is_staff and user.role.filter(type='customer').exists():
             return qs.filter(customer=user)
         return qs
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if not serializer.is_valid():
-            print("Validation Errors for OrderRequest:", serializer.errors)
-        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         order_request = serializer.save(customer=self.request.user)

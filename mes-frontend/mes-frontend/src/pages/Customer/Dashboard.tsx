@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   Table, Card, Tag, Typography, Button, Space, message, Drawer,
   Row, Col, Statistic, Progress, Tooltip, Empty, Descriptions, Badge, Tabs
@@ -91,15 +91,15 @@ const CustomerDashboard: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const navigate = useNavigate();
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const fetchOrders = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const { data } = await apiClient.get("/orders/requests/");
       setOrders(data);
     } catch {
-      message.error("Failed to load orders");
+      if (!silent) message.error("Failed to load orders");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -113,9 +113,18 @@ const CustomerDashboard: React.FC = () => {
     }
   };
 
+  // Tracks already-seen notification ids so polling can toast only new ones.
+  const seenNotificationIds = useRef<Set<string> | null>(null);
+
   const fetchNotifications = async () => {
     try {
-      const { data } = await apiClient.get("/notifications/");
+      const { data } = await apiClient.get<NotificationItem[]>("/notifications/");
+      if (seenNotificationIds.current) {
+        data
+          .filter((n) => !n.is_read && !seenNotificationIds.current!.has(n.id))
+          .forEach((n) => message.info(n.title));
+      }
+      seenNotificationIds.current = new Set(data.map((n) => n.id));
       setNotifications(data);
     } catch {
       // ignore silently
@@ -136,6 +145,12 @@ const CustomerDashboard: React.FC = () => {
   useEffect(() => {
     fetchOrders();
     fetchNotifications();
+    // Poll so order progress and notifications update without a page refresh.
+    const interval = setInterval(() => {
+      fetchOrders(true);
+      fetchNotifications();
+    }, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   /* ---------- Computed Stats ---------- */
@@ -517,7 +532,7 @@ const CustomerDashboard: React.FC = () => {
             const keysToRemove = new Set(currentData.map(o => o.id));
             setExpandedRowKeys(expandedRowKeys.filter(k => !keysToRemove.has(k as string)));
           }}>Collapse Page</Button>
-          <Button icon={<ReloadOutlined />} onClick={fetchOrders} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={() => fetchOrders()} loading={loading}>
             Refresh
           </Button>
           <Button

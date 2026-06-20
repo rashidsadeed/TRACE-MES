@@ -44,7 +44,7 @@ class Command(BaseCommand):
             f"\n╔══════════════════════════════════════════════╗\n"
             f"║   TRACE-MES Simulator CLI                    ║\n"
             f"║   Interval: {interval}s   Time Scale: {TIME_SCALE_FACTOR}x"
-            f"{'':>{21 - len(f'{interval}s   Time Scale: {TIME_SCALE_FACTOR}x')}}║\n"
+            f"{'':>{max(0, 21 - len(f'{interval}s   Time Scale: {TIME_SCALE_FACTOR}x'))}}║\n"
             f"╚══════════════════════════════════════════════╝\n"
         ))
         self.stdout.write(

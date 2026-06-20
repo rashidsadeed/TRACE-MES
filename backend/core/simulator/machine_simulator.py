@@ -21,6 +21,7 @@ from collections import defaultdict
 from datetime import timedelta
 
 from django.db import connection
+from django.db.models import F, Q, Sum
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -140,12 +141,12 @@ class MachineSimulator:
         self.time_scale = time_scale
         # machine_id (str) → MachineState
         self._states: dict[str, MachineState] = {}
-        # execution_id (str) → {"good": int, "scrap": int}
-        self._prod_accumulator: dict[str, dict[str, int]] = defaultdict(
-            lambda: {"good": 0, "scrap": 0}
+        # execution_id (str) → {"good": float, "scrap": float}
+        # Floats: rate-based production accrues fractional parts per tick;
+        # _flush_production_logs writes the integer part and keeps the rest.
+        self._prod_accumulator: dict[str, dict[str, float]] = defaultdict(
+            lambda: {"good": 0.0, "scrap": 0.0}
         )
-        # execution_id (str) → expected completion time (datetime)
-        self._program_end_times: dict[str, object] = {}
         # Internal tick counter
         self._tick = 0
         # Event log for GUI display (list of dicts)
@@ -212,7 +213,6 @@ class MachineSimulator:
             exc.status = "STOPPED"
             exc.completed_at = timezone.now()
             exc.save(update_fields=["status", "completed_at"])
-            self._program_end_times.pop(str(exc.id), None)
 
         machine.status = "OFFLINE"
         machine.save(update_fields=["status"])
@@ -289,12 +289,16 @@ class MachineSimulator:
             assigned_by=system_user,
         )
 
-        # Create execution
+        # Create execution with a persisted completion schedule:
+        # real_seconds = (duration_minutes * 60) / time_scale
+        real_duration_seconds = (duration_minutes * 60) / self.time_scale
+        end_time = timezone.now() + timedelta(seconds=real_duration_seconds)
         execution = WorkOrderExecution.objects.create(
             work_order=wo,
             machine=machine,
             operator=system_user,
             status="RUNNING",
+            program_ends_at=end_time,
         )
 
         # Set machine to RUNNING
@@ -305,11 +309,6 @@ class MachineSimulator:
         mid = str(machine.id)
         if mid not in self._states:
             self._states[mid] = MachineState(machine.type)
-
-        # Schedule completion: real_seconds = (duration_minutes * 60) / time_scale
-        real_duration_seconds = (duration_minutes * 60) / self.time_scale
-        end_time = timezone.now() + timedelta(seconds=real_duration_seconds)
-        self._program_end_times[str(execution.id)] = end_time
 
         MachineEvent.objects.create(
             machine=machine,
@@ -422,12 +421,16 @@ class MachineSimulator:
         if exc.status in ("COMPLETED", "STOPPED"):
             return False
 
-        exc.status = "COMPLETED"
+        # Early termination is STOPPED, not COMPLETED — mirrors the REST
+        # /executions/{id}/stop/ semantics. The work order stays IN_PROGRESS
+        # so the customer keeps seeing it as "In Production".
+        exc.status = "STOPPED"
         exc.completed_at = timezone.now()
         exc.save(update_fields=["status", "completed_at"])
 
-        exc.work_order.status = "COMPLETED"
-        exc.work_order.save(update_fields=["status"])
+        if exc.work_order.status not in ("COMPLETED", "CANCELLED"):
+            exc.work_order.status = "IN_PROGRESS"
+            exc.work_order.save(update_fields=["status"])
 
         # Only set machine IDLE if no other active executions
         other_active = WorkOrderExecution.objects.filter(
@@ -436,8 +439,6 @@ class MachineSimulator:
         if not other_active:
             exc.machine.status = "IDLE"
             exc.machine.save(update_fields=["status"])
-
-        self._program_end_times.pop(str(exc.id), None)
 
         MachineEvent.objects.create(
             machine=exc.machine,
@@ -473,8 +474,15 @@ class MachineSimulator:
         running_executions = list(
             WorkOrderExecution.objects
             .filter(status="RUNNING")
-            .select_related("machine")
+            .select_related("machine", "work_order")
+            .annotate(_produced=Sum("production_logs__good_qty"))
         )
+
+        # Adopt orphan programs: RUNNING executions without a schedule
+        # (started before a restart, or resumed sequence steps). Assign a
+        # completion time proportional to the remaining quantity so they
+        # progress and finish instead of running forever.
+        self._adopt_orphan_executions(running_executions, ts)
 
         # Initialise state for newly detected machines
         for exc in running_executions:
@@ -494,11 +502,21 @@ class MachineSimulator:
                 timestamp=ts,
                 **values,
             ))
-            # Production accumulation
-            if random.random() < (1 / 60):
-                self._prod_accumulator[str(exc.id)]["good"] += 1
+            # Production accumulation — paced as remaining qty over remaining
+            # time, so the target is reached right when the program duration
+            # expires (self-correcting, works for adopted orphans too). Falls
+            # back to the legacy random trickle if no schedule is known yet.
+            target = exc.work_order.target_qty if exc.work_order else 0
+            acc = self._prod_accumulator[str(exc.id)]
+            if exc.program_ends_at and target:
+                produced = (exc._produced or 0) + acc["good"]
+                remaining = max(0.0, target - produced)
+                seconds_left = max(1.0, (exc.program_ends_at - ts).total_seconds())
+                acc["good"] += remaining / seconds_left
+            elif random.random() < (1 / 60):
+                acc["good"] += 1
             if random.random() < 0.0015:
-                self._prod_accumulator[str(exc.id)]["scrap"] += 1
+                acc["scrap"] += 1
 
         if packets:
             TelemetryPacket.objects.bulk_create(packets)
@@ -563,9 +581,8 @@ class MachineSimulator:
                 actual = sum(log.good_qty for log in active_exec.production_logs.all())
                 progress_pct = round((actual / target) * 100, 1) if target > 0 else 0
 
-                end_time = self._program_end_times.get(str(active_exec.id))
-                if end_time:
-                    remaining = (end_time - timezone.now()).total_seconds()
+                if active_exec.program_ends_at:
+                    remaining = (active_exec.program_ends_at - timezone.now()).total_seconds()
                     remaining_sec = max(0, round(remaining))
 
             # Telemetry state
@@ -618,22 +635,44 @@ class MachineSimulator:
             if len(self._event_log) > 100:
                 self._event_log = self._event_log[-100:]
 
-    def _check_program_completion(self, ts, summary: dict):
-        """Auto-complete programs whose duration has expired."""
-        completed_ids = []
-        for exec_id_str, end_time in list(self._program_end_times.items()):
-            if ts >= end_time:
-                completed_ids.append(exec_id_str)
-
-        for exec_id_str in completed_ids:
-            try:
-                exc = WorkOrderExecution.objects.select_related("machine", "work_order").get(
-                    pk=exec_id_str, status="RUNNING"
-                )
-            except WorkOrderExecution.DoesNotExist:
-                self._program_end_times.pop(exec_id_str, None)
+    def _adopt_orphan_executions(self, running_executions, ts):
+        """
+        Give a completion schedule to RUNNING executions that lack one
+        (started before a simulator restart, or sequence steps resumed via
+        the REST API). The window is proportional to the remaining quantity,
+        based on the default 15-sim-minute program length.
+        """
+        default_real_secs = (15.0 * 60) / self.time_scale
+        for exc in running_executions:
+            if exc.program_ends_at is not None:
                 continue
+            target = exc.work_order.target_qty if exc.work_order else 0
+            produced = exc._produced or 0
+            remaining_ratio = 1.0 if not target else max(0.05, (target - produced) / target)
+            exc.program_ends_at = ts + timedelta(seconds=max(30.0, default_real_secs * remaining_ratio))
+            exc.save(update_fields=["program_ends_at"])
+            self._log_event(
+                f"Program süresi atandı: {exc.machine.name} — {exc.work_order.code}"
+            )
 
+    def _check_program_completion(self, ts, summary: dict):
+        """
+        Auto-complete programs whose duration has expired or whose target
+        quantity has been reached. Reads the schedule from the database so
+        running programs survive simulator restarts.
+        """
+        due = list(
+            WorkOrderExecution.objects
+            .filter(status="RUNNING")
+            .annotate(_produced=Sum("production_logs__good_qty"))
+            .filter(
+                Q(program_ends_at__lte=ts)
+                | Q(_produced__gte=F("work_order__target_qty"))
+            )
+            .select_related("machine", "work_order", "work_order__production_line")
+        )
+
+        for exc in due:
             exc.status = "COMPLETED"
             exc.completed_at = ts
             exc.save(update_fields=["status", "completed_at"])
@@ -649,14 +688,12 @@ class MachineSimulator:
                     if current_idx + 1 < len(seq):
                         next_mid = seq[current_idx + 1]
                         try:
-                            from core.models import Machine
                             next_machine = Machine.objects.get(pk=next_mid)
-                        except:
+                        except Machine.DoesNotExist:
                             pass
-                            
+
             if next_machine:
                 # Create a new execution for the next machine
-                from core.models import WorkOrderExecution
                 WorkOrderExecution.objects.create(
                     work_order=wo,
                     machine=next_machine,
@@ -664,8 +701,11 @@ class MachineSimulator:
                 )
                 self._log_event(f"İş emri {wo.code} sıradaki makineye ({next_machine.name}) aktarıldı.")
             else:
-                wo.status = "COMPLETED"
-                wo.save(update_fields=["status"])
+                # Production finished on the last machine. Do NOT auto-complete
+                # the work order — the operator must confirm via
+                # POST /workorders/{id}/complete/, which archives the order and
+                # notifies the customer.
+                self._log_event(f"Üretim bitti, operatör onayı bekleniyor: {wo.code}")
 
             # Flush remaining production
             actual = sum(log.good_qty for log in exc.production_logs.all())
@@ -686,8 +726,6 @@ class MachineSimulator:
             if not other_active:
                 exc.machine.status = "IDLE"
                 exc.machine.save(update_fields=["status"])
-
-            self._program_end_times.pop(exec_id_str, None)
 
             MachineEvent.objects.create(
                 machine=exc.machine,
@@ -727,22 +765,29 @@ class MachineSimulator:
             MachineEvent.objects.bulk_create(events)
 
     def _flush_production_logs(self):
-        """Write accumulated good/scrap counts as ProductionLog rows."""
+        """
+        Write accumulated good/scrap counts as ProductionLog rows.
+        Only the integer part is written; the fractional remainder stays in
+        the accumulator so rate-based production doesn't lose parts.
+        """
         recorder = self._get_system_user()
         for exec_id_str, counts in list(self._prod_accumulator.items()):
-            if counts["good"] == 0 and counts["scrap"] == 0:
+            good_int, scrap_int = int(counts["good"]), int(counts["scrap"])
+            if good_int == 0 and scrap_int == 0:
                 continue
             try:
                 execution = WorkOrderExecution.objects.get(id=exec_id_str, status="RUNNING")
             except WorkOrderExecution.DoesNotExist:
+                self._prod_accumulator.pop(exec_id_str, None)
                 continue
             ProductionLog.objects.create(
                 execution=execution,
                 recorded_by=recorder,
-                good_qty=counts["good"],
-                scrap_qty=counts["scrap"],
+                good_qty=good_int,
+                scrap_qty=scrap_int,
             )
-        self._prod_accumulator.clear()
+            counts["good"] -= good_int
+            counts["scrap"] -= scrap_int
 
     def _inject_anomaly(self, running_executions, ts):
         """Inject a transient anomaly into one randomly chosen running machine."""

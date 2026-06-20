@@ -256,7 +256,7 @@ export const useProduction = () => {
     editJobForm.resetFields();
     cancelJobForm.resetFields();
     resetConflicts();
-  }, [startJobForm, acceptOrderForm, resetConflicts]);
+  }, [startJobForm, acceptOrderForm, editJobForm, cancelJobForm, resetConflicts]);
 
   // --- Handlers (persisted to backend) ---
 
@@ -471,14 +471,14 @@ export const useProduction = () => {
         const job = jobs.find((j) => j.key === key);
         if (!job) return;
         await apiClient.post(`/workorders/${job.workOrderId || job.key}/complete/`);
-        message.success("Job marked as complete.");
+        message.success("Order completed — moved to history and the customer has been notified.");
         await fetchData();
       } catch (err) {
         console.error(err);
         message.error("Failed to complete job.");
       }
     },
-    [fetchData],
+    [jobs, fetchData],
   );
 
   const getLineName = useCallback(
