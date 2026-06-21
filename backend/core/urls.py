@@ -8,6 +8,7 @@ from .views import (
     SystemConfigViewSet, OperationViewSet, ProductionLineViewSet,
     OrderRequestViewSet, NotificationViewSet,
     SimulatorViewSet,
+    notification_stream,
 )
 
 router = DefaultRouter()
@@ -25,6 +26,8 @@ router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'simulator', SimulatorViewSet, basename='simulator')
 
 urlpatterns = [
+    # Before the router so 'stream' isn't matched as a notification pk.
+    path('notifications/stream/', notification_stream, name='notification-stream'),
     path('', include(router.urls)),
     path('quality/production-log/', ProductionLogCreateView.as_view(), name='production-log-create'),
     path('quality/scrap-log/', ScrapLogCreateView.as_view(), name='scrap-log-create'),

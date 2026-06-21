@@ -1,12 +1,15 @@
+import json
 import os
 import threading
+import time
 from datetime import timedelta
 
 from django.conf import settings as django_settings
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Prefetch, Subquery, OuterRef
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse, StreamingHttpResponse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -16,6 +19,8 @@ from rest_framework.views import APIView
 from core.permissions import require_permission
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import AccessToken
 from users.auth import ApiKeyAuthentication
 
 from .models import (
@@ -1271,6 +1276,58 @@ class NotificationViewSet(viewsets.ModelViewSet):
         notification.is_read = True
         notification.save(update_fields=['is_read'])
         return Response(self.get_serializer(notification).data)
+
+
+# How often the stream polls for new notifications.
+NOTIFICATION_STREAM_POLL_SECONDS = 3
+
+
+def notification_stream(request):
+    """SSE stream of new notifications for the authenticated user.
+
+    EventSource can't set headers, so the JWT is passed as ?token=. Only rows
+    newer than ?since= are sent so the initial REST load isn't duplicated.
+    """
+    token = request.GET.get("token", "")
+    try:
+        access = AccessToken(token)
+        user_id = access["user_id"]
+    except (TokenError, KeyError):
+        return HttpResponse("Unauthorized", status=401)
+
+    since = parse_datetime(request.GET.get("since", "")) or timezone.now()
+
+    def event_stream(last_ts):
+        yield "retry: 5000\n\n"  # client reconnect delay (ms)
+        while True:
+            new = list(
+                Notification.objects
+                .filter(user_id=user_id, created_at__gt=last_ts)
+                .order_by("created_at")
+            )
+            if new:
+                last_ts = new[-1].created_at
+                for n in new:
+                    payload = {
+                        "id": str(n.id),
+                        "title": n.title,
+                        "message": n.message,
+                        "is_read": n.is_read,
+                        "created_at": n.created_at.isoformat(),
+                    }
+                    yield f"event: notification\ndata: {json.dumps(payload)}\n\n"
+            else:
+                yield ": keep-alive\n\n"
+            # Don't hold a DB connection idle between polls.
+            connection.close()
+            time.sleep(NOTIFICATION_STREAM_POLL_SECONDS)
+
+    response = StreamingHttpResponse(
+        event_stream(since), content_type="text/event-stream"
+    )
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"  # no nginx buffering
+    return response
 
 
 # ---- Simulator API views ----

@@ -11,6 +11,7 @@ import {
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import apiClient from "../../services/apiClient";
+import { API_BASE_URL } from "../../services/config";
 import ProductVisualizer from "../Production/components/ProductVisualizer";
 
 const { Title, Text } = Typography;
@@ -115,6 +116,11 @@ const CustomerDashboard: React.FC = () => {
 
   // Tracks already-seen notification ids so polling can toast only new ones.
   const seenNotificationIds = useRef<Set<string> | null>(null);
+  // Latest notifications, readable inside the SSE callback set up once below.
+  const notificationsRef = useRef<NotificationItem[]>([]);
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
 
   const fetchNotifications = async () => {
     try {
@@ -145,12 +151,58 @@ const CustomerDashboard: React.FC = () => {
   useEffect(() => {
     fetchOrders();
     fetchNotifications();
-    // Poll so order progress and notifications update without a page refresh.
-    const interval = setInterval(() => {
-      fetchOrders(true);
-      fetchNotifications();
-    }, 15000);
-    return () => clearInterval(interval);
+    // Orders keep polling (also refreshes the access token); notifications
+    // now come live over SSE.
+    const interval = setInterval(() => fetchOrders(true), 15000);
+
+    // Live notifications via SSE
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let closed = false;
+
+    const connect = () => {
+      if (closed) return;
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
+      // Resume from the newest one we have so a reconnect leaves no gap.
+      const since = notificationsRef.current.reduce(
+        (max, n) => (n.created_at > max ? n.created_at : max),
+        "",
+      );
+      const url =
+        `${API_BASE_URL}/notifications/stream/?token=${encodeURIComponent(token)}` +
+        (since ? `&since=${encodeURIComponent(since)}` : "");
+      es = new EventSource(url);
+
+      es.addEventListener("notification", (event) => {
+        try {
+          const n: NotificationItem = JSON.parse((event as MessageEvent).data);
+          setNotifications((prev) =>
+            prev.some((p) => p.id === n.id) ? prev : [n, ...prev],
+          );
+          if (seenNotificationIds.current) seenNotificationIds.current.add(n.id);
+          if (!n.is_read) message.info(n.title);
+        } catch {
+          /* ignore bad payload */
+        }
+      });
+
+      es.onerror = () => {
+        // Token expired or network dropped — reconnect with a fresh token.
+        es?.close();
+        if (closed) return;
+        clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connect, 5000);
+      };
+    };
+    connect();
+
+    return () => {
+      closed = true;
+      clearInterval(interval);
+      clearTimeout(reconnectTimer);
+      es?.close();
+    };
   }, []);
 
   /* ---------- Computed Stats ---------- */

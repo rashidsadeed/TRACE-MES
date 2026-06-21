@@ -109,6 +109,73 @@ GEREKSINIMLER:
   3. Frontend'i baslat (B bolumundeki adimlari takip et).
 
 ============================================================
+  D) MAKINE SIMULATORU GUI (Tkinter — Masaustu)
+============================================================
+
+  Ne ise yarar:
+    Makine ekle/sil, program (is emri) baslat/durakla/devam/durdur,
+    canli telemetri + olay gunlugunu masaustu penceresinde gor.
+    Bu bir DESKTOP penceresidir; headless/SSH ile calismaz, ekran
+    (X11/Wayland veya Windows masaustu) gerekir.
+
+  --- ON KOSULLAR (her iki OS) ---
+
+    1. Veritabani ayakta olmali. En kolayi docker ile:
+         docker compose up -d db          (ya da tum sistem: up -d)
+       Bu, PostgreSQL'i  localhost:5432  uzerinde yayinlar.
+
+    2. GUI HOST uzerinde (container DISILINDA) calisir; cunku Tkinter
+       ekran ister. Bu yuzden DB'ye 'db' yerine 'localhost' ile baglanir
+       -> komuttan once  SQL_HOST=localhost  vermek SART.
+       (Sebep: .env icinde SQL_HOST=db yazar; bu ad yalnizca docker agi
+        icinde cozulur. manage.py .env'i override etmeden yukler, yani
+        kabukta verilen SQL_HOST kazanir.)
+
+  ------------------------------------------------------------
+    WINDOWS  (PowerShell)
+  ------------------------------------------------------------
+
+    cd C:\Users\<kullanici>\Projects\TRACE-MES\backend
+
+    # ilk seferde: sanal ortam + bagimliliklar
+    python -m venv .venv
+    .venv\Scripts\python.exe -m pip install -r requirements.txt
+    # (Tkinter, python.org Windows kurulumuyla hazir gelir)
+
+    # her calistirma:
+    $env:SQL_HOST="localhost"
+    .venv\Scripts\python.exe manage.py simulator_gui
+
+  ------------------------------------------------------------
+    LINUX / macOS  (bash)
+  ------------------------------------------------------------
+
+    cd ~/Projects/github/TRACE-MES/backend
+
+    # ilk seferde: Tkinter sistem paketi (Debian/Ubuntu/Parrot)
+    sudo apt install -y python3-tk python3-venv
+    #   Fedora:  sudo dnf install python3-tkinter
+    #   macOS :  brew install python-tk
+
+    # ilk seferde: sanal ortam + bagimliliklar
+    python3 -m venv .venv
+    .venv/bin/python -m pip install -r requirements.txt
+
+    # her calistirma (tek satir):
+    SQL_HOST=localhost .venv/bin/python manage.py simulator_gui
+
+  --- SECENEKLER ---
+    --interval <sn>   Tick araligi (varsayilan 1.0sn). Orn:
+       SQL_HOST=localhost .venv/bin/python manage.py simulator_gui --interval 0.5
+
+  --- NOT: run_live_generator ILE BIRLIKTE CALISTIRMA ---
+    Hem simulator_gui hem run_live_generator, RUNNING makineler icin
+    telemetri uretir. IKISINI AYNI ANDA calistirma -> cift telemetri olur.
+    - Makineleri ELLE yonetmek (program baslat/durdur) istiyorsan: GUI kullan.
+    - Arka planda otomatik veri akisi istiyorsan: run_live_generator kullan.
+    GUI'yi acmadan once generator calisiyorsa once onu durdur.
+
+============================================================
   GIRIS BILGILERI (Backend / Real Mode)
 ============================================================
 
