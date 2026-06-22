@@ -122,10 +122,10 @@ const JobsTable: React.FC<JobsTableProps> = ({
         dataIndex: "priority",
         key: "priority",
         sorter: (a, b) =>
-          PRIORITY_RANK[a.priority ?? "Normal"] -
-          PRIORITY_RANK[b.priority ?? "Normal"],
+          PRIORITY_RANK[a.priority ?? "Medium"] -
+          PRIORITY_RANK[b.priority ?? "Medium"],
         render: (priority: ProductionJob["priority"]) => {
-          const p = priority ?? "Normal";
+          const p = priority ?? "Medium";
           return <Tag color={PRIORITY_COLOR[p]}>{p.toUpperCase()}</Tag>;
         },
       },
@@ -279,17 +279,22 @@ const JobsTable: React.FC<JobsTableProps> = ({
           if (record.status === "Completed") {
             return (
               <Popconfirm
-                title="Tamamlandı mı?"
+                title="Complete this order?"
+                description="It will be moved to order history and the customer will be notified."
+                okText="Yes, complete"
+                cancelText="No"
                 onConfirm={() => onCompleteJob(record.key)}
                 onPopupClick={(e) => e.stopPropagation()}
               >
-                <Button
-                  type="text"
-                  size="small"
-                  style={{ color: "#52c41a" }}
-                  icon={<CheckCircleOutlined />}
-                  onClick={(e) => e.stopPropagation()}
-                />
+                <Tooltip title="Confirm completion">
+                  <Button
+                    type="text"
+                    size="small"
+                    style={{ color: "#52c41a", fontSize: 18 }}
+                    icon={<CheckCircleOutlined />}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </Tooltip>
               </Popconfirm>
             );
           }

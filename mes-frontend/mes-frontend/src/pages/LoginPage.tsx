@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Card, Form, Input, Button, Typography, message, Space } from "antd";
+import { Card, Form, Input, Button, Typography, message, Space, Alert } from "antd";
 import { UserOutlined, LockOutlined, LoginOutlined } from "@ant-design/icons";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
@@ -16,11 +16,13 @@ const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname;
 
   const handleLogin = async (values: LoginFormValues) => {
     setLoading(true);
+    setLoginError(null);
     try {
       const loggedInUser = await login(values.username, values.password);
       message.success("Login successful!");
@@ -33,7 +35,8 @@ const LoginPage: React.FC = () => {
       
       navigate(redirectPath, { replace: true });
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : "Login failed";
+      const errorMessage = "Giriş bilgileri yanlış. Lütfen kullanıcı adı ve şifrenizi kontrol edip tekrar deneyin.";
+      setLoginError(errorMessage);
       message.error(errorMessage);
     } finally {
       setLoading(false);
@@ -83,6 +86,10 @@ const LoginPage: React.FC = () => {
             </Title>
             <Text type="secondary">Manufacturing Execution System</Text>
           </div>
+
+          {loginError && (
+            <Alert message={loginError} type="error" showIcon style={{ textAlign: "left" }} />
+          )}
 
           {/* Form */}
           <Form<LoginFormValues>

@@ -98,6 +98,11 @@ const buildNodesAndEdges = (
       const x = LINE_START_X + machineIdx * MACHINE_GAP_X;
       const y = lineY;
 
+      const machineJob = job || jobByMachine.get(mid);
+      const machineProgress = machineJob && machineJob.targetQty > 0
+        ? Math.round((machineJob.actualQty / machineJob.targetQty) * 100)
+        : 0;
+
       nodes.push({
         id: machine.id,
         type: "machine",
@@ -109,9 +114,9 @@ const buildNodesAndEdges = (
           type: machine.type,
           status: machine.status,
           temp: machine.temp,
-          jobId: job?.id,
-          jobName: job?.productName,
-          progress,
+          jobId: machineJob?.id,
+          jobName: machineJob?.productName,
+          progress: machineProgress,
           highlighted,
         },
       });
@@ -153,9 +158,9 @@ const buildNodesAndEdges = (
   standalones.forEach((machine, idx) => {
     if (statusFilter !== "All" && machine.status !== statusFilter) return;
 
+    const jobForMachine = jobByMachine.get(machine.id);
     let highlighted: boolean | undefined;
     if (searchLower) {
-      const jobForMachine = jobByMachine.get(machine.id);
       const matches =
         machine.name.toLowerCase().includes(searchLower) ||
         machine.id.toLowerCase().includes(searchLower) ||
@@ -175,6 +180,11 @@ const buildNodesAndEdges = (
         type: machine.type,
         status: machine.status,
         temp: machine.temp,
+        jobId: jobForMachine?.id,
+        jobName: jobForMachine?.productName,
+        progress: jobForMachine && jobForMachine.targetQty > 0 
+           ? Math.round((jobForMachine.actualQty / jobForMachine.targetQty) * 100) 
+           : 0,
         highlighted,
       },
     });

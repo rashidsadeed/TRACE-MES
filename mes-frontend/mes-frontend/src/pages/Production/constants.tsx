@@ -51,15 +51,15 @@ export const LINE_STATUS_CONFIG: Record<LineStatus, string> = {
   Maintenance: "warning",
 };
 
-export const PRIORITY_COLOR: Record<"High" | "Normal" | "Low", string> = {
+export const PRIORITY_COLOR: Record<"High" | "Medium" | "Low", string> = {
   High: "red",
-  Normal: "blue",
+  Medium: "blue",
   Low: "default",
 };
 
-export const PRIORITY_RANK: Record<"High" | "Normal" | "Low", number> = {
+export const PRIORITY_RANK: Record<"High" | "Medium" | "Low", number> = {
   High: 0,
-  Normal: 1,
+  Medium: 1,
   Low: 2,
 };
 
@@ -90,6 +90,7 @@ export const INITIAL_MACHINES: Machine[] = [
   {
     key: "m1",
     id: "CNC-001",
+    slug: "CNC-001",
     name: "CNC Lathe Alpha",
     type: "CNC",
     status: "In Use",
@@ -102,6 +103,7 @@ export const INITIAL_MACHINES: Machine[] = [
   {
     key: "m2",
     id: "CNC-002",
+    slug: "CNC-002",
     name: "CNC Mill Beta",
     type: "CNC",
     status: "Available",
@@ -112,6 +114,7 @@ export const INITIAL_MACHINES: Machine[] = [
   {
     key: "m3",
     id: "PRESS-001",
+    slug: "PRESS-001",
     name: "Hydraulic Press X",
     type: "Press",
     status: "In Use",
@@ -124,6 +127,7 @@ export const INITIAL_MACHINES: Machine[] = [
   {
     key: "m4",
     id: "WELD-001",
+    slug: "WELD-001",
     name: "MIG Welder Station",
     type: "Welding",
     status: "In Use",
@@ -136,6 +140,7 @@ export const INITIAL_MACHINES: Machine[] = [
   {
     key: "m5",
     id: "SOLDER-001",
+    slug: "SOLDER-001",
     name: "Reflow Oven",
     type: "Soldering",
     status: "In Use",
@@ -148,6 +153,7 @@ export const INITIAL_MACHINES: Machine[] = [
   {
     key: "m6",
     id: "TEST-001",
+    slug: "TEST-001",
     name: "ICT Tester",
     type: "Testing",
     status: "In Use",
@@ -160,6 +166,7 @@ export const INITIAL_MACHINES: Machine[] = [
   {
     key: "m7",
     id: "MOLD-001",
+    slug: "MOLD-001",
     name: "Injection Molder A",
     type: "Molding",
     status: "Available",
@@ -170,6 +177,7 @@ export const INITIAL_MACHINES: Machine[] = [
   {
     key: "m8",
     id: "PAINT-001",
+    slug: "PAINT-001",
     name: "Spray Booth 1",
     type: "Painting",
     status: "Maintenance",
@@ -180,6 +188,7 @@ export const INITIAL_MACHINES: Machine[] = [
   {
     key: "m9",
     id: "PACK-001",
+    slug: "PACK-001",
     name: "Auto Packer",
     type: "Packaging",
     status: "Available",
@@ -190,6 +199,7 @@ export const INITIAL_MACHINES: Machine[] = [
   {
     key: "m10",
     id: "ASM-001",
+    slug: "ASM-001",
     name: "Assembly Robot Arm",
     type: "Assembly",
     status: "Error",
@@ -205,6 +215,7 @@ export const INITIAL_LINES: ProductionLine[] = [
   {
     key: "l1",
     id: "LINE-01",
+    slug: "LINE-01",
     name: "Auto Parts Assembly",
     isCustom: false,
     machineIds: ["CNC-001", "PRESS-001", "WELD-001"],
@@ -214,6 +225,7 @@ export const INITIAL_LINES: ProductionLine[] = [
   {
     key: "l2",
     id: "LINE-02",
+    slug: "LINE-02",
     name: "PCB Manufacturing",
     isCustom: false,
     machineIds: ["SOLDER-001", "TEST-001"],
@@ -223,6 +235,7 @@ export const INITIAL_LINES: ProductionLine[] = [
   {
     key: "l3",
     id: "LINE-03",
+    slug: "LINE-03",
     name: "Injection Molding Line",
     isCustom: false,
     machineIds: ["MOLD-001"],
@@ -298,7 +311,7 @@ export const INITIAL_PENDING_ORDERS: PendingOrder[] = [
     client: "Bosch GmbH",
     product: "Sensor Housing V3",
     quantity: 3000,
-    priority: "Normal",
+    priority: "Medium",
     dueDate: dayjs().add(14, "day").format("YYYY-MM-DD"),
   },
   {

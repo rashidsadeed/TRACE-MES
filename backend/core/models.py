@@ -246,6 +246,11 @@ class WorkOrderExecution(models.Model):
     started_at = models.DateTimeField(auto_now_add=True)
     paused_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    program_ends_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='Scheduled simulator program completion time. Persisted so '
+                  'running programs survive simulator/backend restarts.',
+    )
 
     def __str__(self):
         return f"Execution {self.id} for {self.work_order.code} ({self.status})"

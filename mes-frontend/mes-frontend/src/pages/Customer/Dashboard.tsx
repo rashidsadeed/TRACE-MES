@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   Table, Card, Tag, Typography, Button, Space, message, Drawer,
   Row, Col, Statistic, Progress, Tooltip, Empty, Descriptions, Badge, Tabs
@@ -11,6 +11,7 @@ import {
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import apiClient from "../../services/apiClient";
+import { API_BASE_URL } from "../../services/config";
 import ProductVisualizer from "../Production/components/ProductVisualizer";
 
 const { Title, Text } = Typography;
@@ -70,9 +71,9 @@ const PRODUCTION_STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: s
 };
 
 const PRIORITY_MAP: Record<number, { label: string; color: string }> = {
-  1: { label: "High",   color: "red" },
-  2: { label: "Normal", color: "blue" },
-  3: { label: "Low",    color: "green" },
+  3: { label: "High",   color: "red" },
+  2: { label: "Medium", color: "blue" },
+  1: { label: "Low",    color: "green" },
 };
 
 
@@ -91,15 +92,15 @@ const CustomerDashboard: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const navigate = useNavigate();
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const fetchOrders = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const { data } = await apiClient.get("/orders/requests/");
       setOrders(data);
     } catch {
-      message.error("Failed to load orders");
+      if (!silent) message.error("Failed to load orders");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -113,9 +114,23 @@ const CustomerDashboard: React.FC = () => {
     }
   };
 
+  // Tracks already-seen notification ids so polling can toast only new ones.
+  const seenNotificationIds = useRef<Set<string> | null>(null);
+  // Latest notifications, readable inside the SSE callback set up once below.
+  const notificationsRef = useRef<NotificationItem[]>([]);
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
+
   const fetchNotifications = async () => {
     try {
-      const { data } = await apiClient.get("/notifications/");
+      const { data } = await apiClient.get<NotificationItem[]>("/notifications/");
+      if (seenNotificationIds.current) {
+        data
+          .filter((n) => !n.is_read && !seenNotificationIds.current!.has(n.id))
+          .forEach((n) => message.info(n.title));
+      }
+      seenNotificationIds.current = new Set(data.map((n) => n.id));
       setNotifications(data);
     } catch {
       // ignore silently
@@ -136,6 +151,58 @@ const CustomerDashboard: React.FC = () => {
   useEffect(() => {
     fetchOrders();
     fetchNotifications();
+    // Orders keep polling (also refreshes the access token); notifications
+    // now come live over SSE.
+    const interval = setInterval(() => fetchOrders(true), 15000);
+
+    // Live notifications via SSE
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let closed = false;
+
+    const connect = () => {
+      if (closed) return;
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
+      // Resume from the newest one we have so a reconnect leaves no gap.
+      const since = notificationsRef.current.reduce(
+        (max, n) => (n.created_at > max ? n.created_at : max),
+        "",
+      );
+      const url =
+        `${API_BASE_URL}/notifications/stream/?token=${encodeURIComponent(token)}` +
+        (since ? `&since=${encodeURIComponent(since)}` : "");
+      es = new EventSource(url);
+
+      es.addEventListener("notification", (event) => {
+        try {
+          const n: NotificationItem = JSON.parse((event as MessageEvent).data);
+          setNotifications((prev) =>
+            prev.some((p) => p.id === n.id) ? prev : [n, ...prev],
+          );
+          if (seenNotificationIds.current) seenNotificationIds.current.add(n.id);
+          if (!n.is_read) message.info(n.title);
+        } catch {
+          /* ignore bad payload */
+        }
+      });
+
+      es.onerror = () => {
+        // Token expired or network dropped — reconnect with a fresh token.
+        es?.close();
+        if (closed) return;
+        clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connect, 5000);
+      };
+    };
+    connect();
+
+    return () => {
+      closed = true;
+      clearInterval(interval);
+      clearTimeout(reconnectTimer);
+      es?.close();
+    };
   }, []);
 
   /* ---------- Computed Stats ---------- */
@@ -244,11 +311,19 @@ const CustomerDashboard: React.FC = () => {
         const cfg = PRODUCTION_STATUS_CONFIG[details.status] ?? {
           icon: null, color: "default",
         };
-        return (
+        const tag = (
           <Tag icon={cfg.icon} color={cfg.color}>
             {details.status}
           </Tag>
         );
+        if (details.status === "Cancelled" || details.raw_status === "CANCELLED") {
+          return (
+            <Tooltip title={record.rejection_reason ? `Reason: ${record.rejection_reason}` : "No reason provided"}>
+              {tag}
+            </Tooltip>
+          );
+        }
+        return tag;
       },
     },
     {
@@ -509,7 +584,7 @@ const CustomerDashboard: React.FC = () => {
             const keysToRemove = new Set(currentData.map(o => o.id));
             setExpandedRowKeys(expandedRowKeys.filter(k => !keysToRemove.has(k as string)));
           }}>Collapse Page</Button>
-          <Button icon={<ReloadOutlined />} onClick={fetchOrders} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={() => fetchOrders()} loading={loading}>
             Refresh
           </Button>
           <Button

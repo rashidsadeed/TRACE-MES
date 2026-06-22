@@ -27,6 +27,7 @@ export interface SAPOrder {
   block_status: string;
   manufacturer_part_no: string;
   priority: string;
+  resolved_priority: number | null;
   sync_status: "PENDING" | "SYNCED" | "ERROR";
   sync_error: string;
   import_batch: string;

@@ -1,6 +1,6 @@
 import type { Dayjs } from "dayjs";
 
-export type Priority = "High" | "Normal" | "Low";
+export type Priority = "High" | "Medium" | "Low";
 
 // --- Machine ---
 
@@ -88,7 +88,7 @@ export interface PendingOrder {
   approvedBy?: string; // admin who created work order
   product: string;
   quantity: number;
-  priority: "High" | "Normal" | "Low";
+  priority: "High" | "Medium" | "Low";
   dueDate: string;
   productionLineId?: string;
   machineIds?: string[];

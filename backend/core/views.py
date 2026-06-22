@@ -1,12 +1,15 @@
+import json
 import os
 import threading
+import time
 from datetime import timedelta
 
 from django.conf import settings as django_settings
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Prefetch, Subquery, OuterRef
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse, StreamingHttpResponse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -16,6 +19,8 @@ from rest_framework.views import APIView
 from core.permissions import require_permission
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import AccessToken
 from users.auth import ApiKeyAuthentication
 
 from .models import (
@@ -217,11 +222,19 @@ class WorkOrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='cancel')
     def cancel(self, request, pk=None):
         wo = self.get_object()
+        if wo.status in ('COMPLETED', 'CANCELLED'):
+            return Response(
+                {'detail': f'Cannot cancel a {wo.status} work order.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         reason = request.data.get('reason', 'No reason provided')
-        
+        before_data = WorkOrderSerializer(wo, context={'request': request}).data
+
         with transaction.atomic():
             wo.status = 'CANCELLED'
-            wo.save(update_fields=['status'])
+            # updated_at is auto_now but skipped unless listed in update_fields;
+            # it doubles as the "finished at" timestamp in order history.
+            wo.save(update_fields=['status', 'updated_at'])
 
             executions = wo.executions.filter(status__in=['RUNNING', 'PAUSED', 'AWAITING_START', 'STOPPED'])
             for ex in executions:
@@ -246,16 +259,33 @@ class WorkOrderViewSet(viewsets.ModelViewSet):
                         title=f"Order Cancelled: {wo.code}",
                         message=f"Your order {wo.code} has been cancelled. Reason: {reason}"
                     )
-                    
+
+        log_action(
+            actor=request.user,
+            action="CANCEL_WORKORDER",
+            entity_type="WorkOrder",
+            entity_id=wo.pk,
+            before=before_data,
+            after=WorkOrderSerializer(wo, context={'request': request}).data,
+            request=request,
+        )
         return Response({'status': 'cancelled'})
 
     @action(detail=True, methods=['post'], url_path='complete')
     def complete(self, request, pk=None):
         wo = self.get_object()
-        
+        if wo.status in ('COMPLETED', 'CANCELLED'):
+            return Response(
+                {'detail': f'Cannot complete a {wo.status} work order.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        before_data = WorkOrderSerializer(wo, context={'request': request}).data
+
         with transaction.atomic():
             wo.status = 'COMPLETED'
-            wo.save(update_fields=['status'])
+            # updated_at is auto_now but skipped unless listed in update_fields;
+            # it doubles as the "finished at" timestamp in order history.
+            wo.save(update_fields=['status', 'updated_at'])
 
             executions = wo.executions.filter(status__in=['RUNNING', 'PAUSED', 'AWAITING_START', 'STOPPED'])
             for ex in executions:
@@ -280,7 +310,16 @@ class WorkOrderViewSet(viewsets.ModelViewSet):
                         title=f"Order Completed: {wo.code}",
                         message=f"Your order {wo.code} has been completed and is ready."
                     )
-                    
+
+        log_action(
+            actor=request.user,
+            action="COMPLETE_WORKORDER",
+            entity_type="WorkOrder",
+            entity_id=wo.pk,
+            before=before_data,
+            after=WorkOrderSerializer(wo, context={'request': request}).data,
+            request=request,
+        )
         return Response({'status': 'completed'})
 
     @action(detail=True, methods=['post'], url_path='assign')
@@ -516,7 +555,8 @@ class ExecutionViewSet(mixins.DestroyModelMixin, viewsets.GenericViewSet):
             execution.save(update_fields=['status', 'completed_at', 'paused_at'])
 
             work_order = WorkOrder.objects.select_for_update().get(pk=execution.work_order_id)
-            work_order.status = 'CANCELLED'
+            # Keep the work order in IN_PROGRESS so the customer sees it as "In Production"
+            work_order.status = 'IN_PROGRESS'
             work_order.save(update_fields=['status'])
 
             # B-3: Only set machine IDLE if no other active executions exist on it
@@ -1010,11 +1050,6 @@ class OrderRequestViewSet(viewsets.ModelViewSet):
         if not user.is_staff and user.role.filter(type='customer').exists():
             return qs.filter(customer=user)
         return qs
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if not serializer.is_valid():
-            print("Validation Errors for OrderRequest:", serializer.errors)
-        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         order_request = serializer.save(customer=self.request.user)
@@ -1172,6 +1207,14 @@ class OrderRequestViewSet(viewsets.ModelViewSet):
         order_request.rejection_reason = request.data.get('rejection_reason', '')
         order_request.save(update_fields=['status', 'rejection_reason'])
         
+        if order_request.customer:
+            reason = order_request.rejection_reason or "No reason provided."
+            Notification.objects.create(
+                user=order_request.customer,
+                title=f"Order Rejected: {order_request.title or 'Unknown'}",
+                message=f"Your order request '{order_request.title or 'Unknown'}' has been rejected. Reason: {reason}"
+            )
+        
         after_data = OrderRequestSerializer(order_request, context={'request': request}).data
         log_action(
             actor=request.user,
@@ -1233,6 +1276,58 @@ class NotificationViewSet(viewsets.ModelViewSet):
         notification.is_read = True
         notification.save(update_fields=['is_read'])
         return Response(self.get_serializer(notification).data)
+
+
+# How often the stream polls for new notifications.
+NOTIFICATION_STREAM_POLL_SECONDS = 3
+
+
+def notification_stream(request):
+    """SSE stream of new notifications for the authenticated user.
+
+    EventSource can't set headers, so the JWT is passed as ?token=. Only rows
+    newer than ?since= are sent so the initial REST load isn't duplicated.
+    """
+    token = request.GET.get("token", "")
+    try:
+        access = AccessToken(token)
+        user_id = access["user_id"]
+    except (TokenError, KeyError):
+        return HttpResponse("Unauthorized", status=401)
+
+    since = parse_datetime(request.GET.get("since", "")) or timezone.now()
+
+    def event_stream(last_ts):
+        yield "retry: 5000\n\n"  # client reconnect delay (ms)
+        while True:
+            new = list(
+                Notification.objects
+                .filter(user_id=user_id, created_at__gt=last_ts)
+                .order_by("created_at")
+            )
+            if new:
+                last_ts = new[-1].created_at
+                for n in new:
+                    payload = {
+                        "id": str(n.id),
+                        "title": n.title,
+                        "message": n.message,
+                        "is_read": n.is_read,
+                        "created_at": n.created_at.isoformat(),
+                    }
+                    yield f"event: notification\ndata: {json.dumps(payload)}\n\n"
+            else:
+                yield ": keep-alive\n\n"
+            # Don't hold a DB connection idle between polls.
+            connection.close()
+            time.sleep(NOTIFICATION_STREAM_POLL_SECONDS)
+
+    response = StreamingHttpResponse(
+        event_stream(since), content_type="text/event-stream"
+    )
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"  # no nginx buffering
+    return response
 
 
 # ---- Simulator API views ----

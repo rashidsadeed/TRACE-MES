@@ -16,7 +16,7 @@ const { Text } = Typography;
 
 const PRIORITY_COLOR: Record<string, string> = {
   High: "red",
-  Normal: "blue",
+  Medium: "blue",
   Low: "green",
 };
 

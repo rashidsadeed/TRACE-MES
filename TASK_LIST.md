@@ -1,6 +1,6 @@
 # TRACE-MES Backend — Task List
 
-**PM/Scrum Master:** Claude (Lead)
+**PM/Scrum Master:** Lead
 **Team:** Coder · Security · QA
 **Last Updated:** 2026-03-07
 

@@ -285,13 +285,13 @@ export interface MockPendingOrder {
   client: string;
   product: string;
   quantity: number;
-  priority: "High" | "Normal" | "Low";
+  priority: "High" | "Medium" | "Low";
   dueDate: string;
 }
 
 export const MOCK_PENDING_ORDERS: MockPendingOrder[] = [
   { key: "po1", orderId: "WO-2024-001", client: "Tesla Inc.", product: "Battery Casing Model Y", quantity: 5000, priority: "High", dueDate: "2024-04-01" },
-  { key: "po2", orderId: "WO-2024-003", client: "Bosch GmbH", product: "Sensor Housing V3", quantity: 3000, priority: "Normal", dueDate: "2024-04-10" },
+  { key: "po2", orderId: "WO-2024-003", client: "Bosch GmbH", product: "Sensor Housing V3", quantity: 3000, priority: "Medium", dueDate: "2024-04-10" },
   { key: "po3", orderId: "WO-2024-005", client: "Samsung", product: 'OLED Frame 55"', quantity: 800, priority: "Low", dueDate: "2024-05-01" },
 ];
 
@@ -300,7 +300,7 @@ export const MOCK_PENDING_ORDERS: MockPendingOrder[] = [
 // ============================================================
 
 export type OrderStatus = "Pending" | "In Progress" | "Completed" | "Delayed";
-export type Priority = "High" | "Normal" | "Low";
+export type Priority = "High" | "Medium" | "Low";
 
 export interface MockWorkOrder {
   key: string;
@@ -319,7 +319,7 @@ export interface MockWorkOrder {
 
 export const MOCK_WORK_ORDERS: MockWorkOrder[] = [
   { key: "1", id: "WO-2024-001", product: "Industrial Pump X500", quantity: 500, completed: 320, priority: "High", status: "In Progress", dueDate: new Date(Date.now() + 86400000).toISOString().split("T")[0], assignmentType: "existing-line", assignedLine: "LINE-01" },
-  { key: "2", id: "WO-2024-002", product: "Circuit Board V2", quantity: 2000, completed: 0, priority: "Normal", status: "Pending", dueDate: "2024-03-20", assignmentType: "machine", assignedMachineIds: ["CNC-002", "PRESS-001"] },
+  { key: "2", id: "WO-2024-002", product: "Circuit Board V2", quantity: 2000, completed: 0, priority: "Medium", status: "Pending", dueDate: "2024-03-20", assignmentType: "machine", assignedMachineIds: ["CNC-002", "PRESS-001"] },
 ];
 
 export interface MockOrderRequest {

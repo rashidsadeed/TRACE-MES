@@ -22,9 +22,9 @@ import type {
 } from "../../../services/workOrderService";
 
 const PRIORITY_TO_NUMBER: Record<Priority, number> = {
-  High: 1,
-  Normal: 2,
-  Low: 3,
+  High: 3,
+  Medium: 2,
+  Low: 1,
 };
 
 const findPartByProductName = (
@@ -256,7 +256,7 @@ export const useProduction = () => {
     editJobForm.resetFields();
     cancelJobForm.resetFields();
     resetConflicts();
-  }, [startJobForm, acceptOrderForm, resetConflicts]);
+  }, [startJobForm, acceptOrderForm, editJobForm, cancelJobForm, resetConflicts]);
 
   // --- Handlers (persisted to backend) ---
 
@@ -321,7 +321,7 @@ export const useProduction = () => {
             part: partId,
             production_line: targetLineId || null,
             target_qty: values.targetQty,
-            priority: values.priority === "High" ? 3 : values.priority === "Normal" ? 2 : 1,
+            priority: values.priority === "High" ? 3 : values.priority === "Medium" ? 2 : 1,
             due_date: values.dueDate ? dayjs(values.dueDate).toISOString() : null,
           });
 
@@ -471,14 +471,14 @@ export const useProduction = () => {
         const job = jobs.find((j) => j.key === key);
         if (!job) return;
         await apiClient.post(`/workorders/${job.workOrderId || job.key}/complete/`);
-        message.success("Job marked as complete.");
+        message.success("Order completed — moved to history and the customer has been notified.");
         await fetchData();
       } catch (err) {
         console.error(err);
         message.error("Failed to complete job.");
       }
     },
-    [fetchData],
+    [jobs, fetchData],
   );
 
   const getLineName = useCallback(

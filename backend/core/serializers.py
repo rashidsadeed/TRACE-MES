@@ -103,6 +103,42 @@ class _UserMiniSerializer(serializers.ModelSerializer):
 
 # ---- Order Request serializers ----
 
+def work_order_production_details(wo):
+    """
+    Production metrics for a WorkOrder — shared by OrderRequestSerializer
+    (customer view) and WorkOrderSerializer (internal orders on the admin
+    Orders page).
+    """
+    if wo is None:
+        return None
+
+    # Sum good_qty across all executions → production_logs
+    good_qty = 0
+    for execution in wo.executions.prefetch_related('production_logs').all():
+        good_qty += sum(log.good_qty for log in execution.production_logs.all())
+
+    target = wo.target_qty or 0
+    progress = round((good_qty / target) * 100, 1) if target > 0 else 0
+
+    status_map = {
+        'PENDING': 'Queued',
+        'IN_PROGRESS': 'In Production',
+        'PAUSED': 'Paused',
+        'COMPLETED': 'Completed',
+        'CANCELLED': 'Cancelled',
+    }
+
+    return {
+        'status': status_map.get(wo.status, wo.status),
+        'raw_status': wo.status,
+        'target_qty': target,
+        'good_qty': good_qty,
+        'progress_percentage': progress,
+        'due_date': wo.due_date.isoformat() if wo.due_date else None,
+        'priority': wo.priority,
+    }
+
+
 class OrderRequestSerializer(serializers.ModelSerializer):
     """Read serializer for Order Requests."""
     customer = _UserMiniSerializer(read_only=True)
@@ -133,36 +169,7 @@ class OrderRequestSerializer(serializers.ModelSerializer):
 
     def get_work_order_details(self, obj):
         """Return production metrics from the linked WorkOrder for customer visibility."""
-        wo = obj.work_order
-        if wo is None:
-            return None
-
-        # Sum good_qty across all executions → production_logs
-        good_qty = 0
-        for execution in wo.executions.prefetch_related('production_logs').all():
-            good_qty += sum(log.good_qty for log in execution.production_logs.all())
-
-        target = wo.target_qty or 0
-        progress = round((good_qty / target) * 100, 1) if target > 0 else 0
-
-        # Map backend status to a customer-friendly label
-        status_map = {
-            'PENDING': 'Queued',
-            'IN_PROGRESS': 'In Production',
-            'PAUSED': 'Paused',
-            'COMPLETED': 'Completed',
-            'CANCELLED': 'Cancelled',
-        }
-
-        return {
-            'status': status_map.get(wo.status, wo.status),
-            'raw_status': wo.status,
-            'target_qty': target,
-            'good_qty': good_qty,
-            'progress_percentage': progress,
-            'due_date': wo.due_date.isoformat() if wo.due_date else None,
-            'priority': wo.priority,
-        }
+        return work_order_production_details(obj.work_order)
 
 
 class OrderRequestCreateSerializer(serializers.ModelSerializer):
@@ -218,9 +225,13 @@ class WorkOrderSerializer(serializers.ModelSerializer):
     product_title = serializers.SerializerMethodField()
     file_3d_url = serializers.SerializerMethodField()
     file_glb_url = serializers.SerializerMethodField()
+    production_details = serializers.SerializerMethodField()
 
     def get_machine_ids(self, obj):
         return [assignment.machine_id for assignment in obj.assignments.all()]
+
+    def get_production_details(self, obj):
+        return work_order_production_details(obj)
 
     def get_customer(self, obj):
         if hasattr(obj, 'order_request') and obj.order_request.customer:
@@ -248,7 +259,8 @@ class WorkOrderSerializer(serializers.ModelSerializer):
             "id", "code", "description", "part", "production_line",
             "target_qty", "priority", "status", "due_date",
             "created_by", "created_at", "updated_at", "machine_ids",
-            "customer", "product_title", "file_3d_url", "file_glb_url"
+            "customer", "product_title", "file_3d_url", "file_glb_url",
+            "production_details",
         ]
         read_only_fields = fields
 
@@ -311,6 +323,7 @@ class WorkOrderExecutionSerializer(serializers.ModelSerializer):
     """Read serializer for execution records."""
     work_order = serializers.UUIDField(source="work_order_id", read_only=True)
     work_order_code = serializers.CharField(source="work_order.code", read_only=True)
+    work_order_status = serializers.CharField(source="work_order.status", read_only=True)
     part_name = serializers.CharField(source="work_order.part.name", read_only=True)
     target_qty = serializers.IntegerField(source="work_order.target_qty", read_only=True)
     priority = serializers.IntegerField(source="work_order.priority", read_only=True)
@@ -354,7 +367,7 @@ class WorkOrderExecutionSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkOrderExecution
         fields = [
-            "id", "work_order", "work_order_code", "part_name", "machine", "operator",
+            "id", "work_order", "work_order_code", "work_order_status", "part_name", "machine", "operator",
             "status", "target_qty", "actual_qty", "priority", "due_date",
             "started_at", "paused_at", "completed_at",
             "production_line_id", "production_line_slug", "production_line_sequence", "production_line_name",

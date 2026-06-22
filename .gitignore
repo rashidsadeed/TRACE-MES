@@ -25,3 +25,8 @@ Thumbs.db
 # Local env files
 .env.local
 .env.*.local
+
+# Tooling / local config
+.claude/
+CLAUDE.md
+graphify-out/

@@ -44,7 +44,6 @@ const MainLayout: React.FC = () => {
     { key: "/backlog", icon: <OrderedListOutlined />, label: "Backlog" },
     { key: "/live-map", icon: <RadarChartOutlined />, label: "Live Map" },
     { key: "/erp-integration", icon: <ApiOutlined />, label: "SAP ERP" },
-    { key: "/inventory", icon: <InboxOutlined />, label: "Inventory" },
     { key: "/settings", icon: <SettingOutlined />, label: "Settings" },
   ];
 
